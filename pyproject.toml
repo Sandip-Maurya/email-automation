@@ -1,0 +1,38 @@
+[project]
+name = "email-automation"
+version = "0.1.0"
+description = "Pharmaceutical email agentic network for automated email processing"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic-ai>=0.0.24",
+    "pydantic>=2.0",
+    "openai>=1.0",
+    "python-dotenv>=1.0",
+    "rich>=13.0",
+    "typer>=0.9",
+    "structlog>=24.0",
+    # Microsoft Graph API (delegated auth via MSAL)
+    "msgraph-sdk>=1.2",
+    # Phoenix / OpenTelemetry observability
+    "arize-phoenix>=8.0",
+    "arize-phoenix-otel>=0.10",
+    "openinference-instrumentation-pydantic-ai>=0.1",
+    # Email body sanitization
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    # Webhook service and auth
+    "fastapi>=0.109",
+    "uvicorn>=0.27",
+    "msal>=1.26",
+]
+
+[project.scripts]
+email-automation = "src.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

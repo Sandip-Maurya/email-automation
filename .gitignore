@@ -1,0 +1,28 @@
+# ignore virtual environments
+venv/
+.venv/
+
+# ignore environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.development
+.env.test
+.env.production
+
+# ignore cache files
+__pycache__/
+
+# ignore data files
+data/
+
+# ignore output files
+output/
+
+# ignore logs
+logs/
+
+# ignore deduplication state
+dedup_state.json
