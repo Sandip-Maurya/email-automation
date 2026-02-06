@@ -154,6 +154,7 @@ async def _process_notification_message(
 ) -> None:
     """Process a single candidate: get_message (with optional user_id), apply filters, then run process_trigger.
     Used by the queue worker pool; concurrency is bounded by worker count.
+    Skips immediately if this message_id already failed or is being processed by another worker.
     """
     provider = getattr(app.state, "provider", None)
     if not provider:
@@ -161,6 +162,15 @@ async def _process_notification_message(
     dedup: DedupStore | None = getattr(app.state, "dedup_store", None)
     allowed_senders: list[str] = getattr(app.state, "allowed_senders", [])
 
+    # Skip duplicates: same message_id may be enqueued many times from notification bursts.
+    if dedup is not None:
+        if await dedup.has_failed(message_id):
+            logger.debug("webhook.notifications.skip_already_failed_worker", message_id=message_id)
+            return
+        if await dedup.is_processing(message_id):
+            logger.debug("webhook.notifications.skip_in_progress_worker", message_id=message_id)
+            return
+        await dedup.add_processing(message_id)
     try:
         msg = None
         # Retry loop for Graph eventual consistency (message not yet replicated). Distinct from
@@ -226,6 +236,9 @@ async def _process_notification_message(
             message_id=message_id,
             error=str(e),
         )
+    finally:
+        if dedup is not None:
+            await dedup.remove_processing(message_id)
 
 
 async def _notification_worker(app: FastAPI, worker_id: int) -> None:
