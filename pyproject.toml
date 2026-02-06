@@ -25,6 +25,8 @@ dependencies = [
     "fastapi>=0.109",
     "uvicorn>=0.27",
     "msal>=1.26",
+    # Filter config (email validation)
+    "email-validator>=2.0",
 ]
 
 [project.scripts]

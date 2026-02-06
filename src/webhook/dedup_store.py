@@ -21,13 +21,17 @@ class DedupStore:
         self,
         store_path: str | Path,
         conversation_cooldown_seconds: int = 300,
+        failed_message_ttl_seconds: int = 600,
     ):
         self._store_path = Path(store_path)
         self._cooldown_seconds = conversation_cooldown_seconds
+        self._failed_ttl_seconds = failed_message_ttl_seconds
         self._lock = asyncio.Lock()
         self._triggered_message_ids: set[str] = set()
         self._conversation_replies: dict[str, str] = {}  # conversation_id -> ISO timestamp
         self._processing_message_ids: set[str] = set()  # in-flight only (not persisted)
+        # message_id -> ISO timestamp; entries expire after _failed_ttl_seconds (not persisted)
+        self._failed_message_ids: dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
@@ -92,6 +96,36 @@ class DedupStore:
         """Remove message from in-flight set."""
         async with self._lock:
             self._processing_message_ids.discard(message_id)
+
+    def _cleanup_expired_failures(self) -> None:
+        """Remove failed message IDs older than TTL. Caller must hold _lock."""
+        if not self._failed_message_ids:
+            return
+        now = datetime.now(timezone.utc)
+        expired = []
+        for mid, ts_str in self._failed_message_ids.items():
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if (now - ts).total_seconds() > self._failed_ttl_seconds:
+                    expired.append(mid)
+            except (ValueError, TypeError):
+                expired.append(mid)
+        for mid in expired:
+            del self._failed_message_ids[mid]
+
+    async def mark_failed(self, message_id: str) -> None:
+        """Record that fetching this message_id failed (not found after retries). Expires after TTL."""
+        async with self._lock:
+            self._failed_message_ids[message_id] = (
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            )
+            self._cleanup_expired_failures()
+
+    async def has_failed(self, message_id: str) -> bool:
+        """Return True if this message_id recently failed to fetch (within TTL)."""
+        async with self._lock:
+            self._cleanup_expired_failures()
+            return message_id in self._failed_message_ids
 
     def _get_conversation_last_reply(self, conversation_id: str) -> datetime | None:
         """Get last reply time for conversation (no lock; caller must hold lock)."""

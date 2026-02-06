@@ -52,3 +52,21 @@ SUBSCRIPTION_EXPIRATION_MINUTES = int(os.getenv("SUBSCRIPTION_EXPIRATION_MINUTES
 # Webhook deduplication (avoid duplicate replies)
 DEDUP_CONVERSATION_COOLDOWN_SECONDS = int(os.getenv("DEDUP_CONVERSATION_COOLDOWN_SECONDS", "120"))
 DEDUP_STORE_PATH = DATA_DIR / "dedup_state.json"
+
+# Webhook concurrency (bounded queue + worker pool).
+# Lower worker count reduces 429 MailboxConcurrency from Graph when many notifications arrive.
+WEBHOOK_QUEUE_MAX = int(os.getenv("WEBHOOK_QUEUE_MAX", "200"))
+WEBHOOK_WORKER_COUNT = int(os.getenv("WEBHOOK_WORKER_COUNT", "2"))
+
+# Webhook subscription resource (narrowed to Inbox by default)
+WEBHOOK_SUBSCRIPTION_RESOURCE = os.getenv(
+    "WEBHOOK_SUBSCRIPTION_RESOURCE",
+    "me/mailFolders('Inbox')/messages",
+)
+
+# Webhook fetch retry settings (for Graph eventual consistency)
+WEBHOOK_FETCH_MAX_ATTEMPTS = int(os.getenv("WEBHOOK_FETCH_MAX_ATTEMPTS", "5"))
+WEBHOOK_FETCH_BASE_DELAY = float(os.getenv("WEBHOOK_FETCH_BASE_DELAY", "2.0"))
+
+# TTL for failed message IDs in dedup store (seconds)
+WEBHOOK_FAILED_MSG_TTL_SECONDS = int(os.getenv("WEBHOOK_FAILED_MSG_TTL_SECONDS", "600"))

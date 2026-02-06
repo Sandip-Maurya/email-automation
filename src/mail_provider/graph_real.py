@@ -2,9 +2,16 @@
 
 import asyncio
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-from msgraph import GraphServiceClient
+from msgraph import GraphServiceClient, GraphRequestAdapter
 from msgraph.generated.models.subscription import Subscription as GraphSubscription
+
+if TYPE_CHECKING:
+    import httpx
+from kiota_authentication_azure.azure_identity_authentication_provider import (
+    AzureIdentityAuthenticationProvider,
+)
 
 from src.auth.token_cache import get_persistent_device_code_credential
 from msgraph.generated.models.message import Message as GraphSDKMessage
@@ -41,21 +48,47 @@ def _is_transient_network_error(e: Exception) -> bool:
     """True if the exception is a transient I/O/network error worth retrying.
 
     Includes: WriteError, ConnectionResetError, LocalProtocolError (e.g. SEND_HEADERS on
-    closed connection from httpx/httpcore), and WinError 10054.
+    closed connection from httpx/httpcore), httpx/httpcore timeout exceptions, and WinError 10054.
     """
+    try:
+        import httpx
+        if isinstance(e, httpx.TimeoutException):
+            return True
+    except ImportError:
+        pass
     name = type(e).__name__
     if name in (
+        "ReadError",
         "WriteError",
         "ConnectionResetError",
         "ConnectionError",
         "TimeoutError",
         "LocalProtocolError",
         "RemoteProtocolError",
+        "ConnectTimeout",
+        "ReadTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
     ):
         return True
     if isinstance(e, OSError) and getattr(e, "winerror", None) == 10054:
         return True
     return False
+
+
+def _is_throttle_error(e: Exception) -> bool:
+    """True if the exception is a Graph 429 / throttling error (ApplicationThrottled, MailboxConcurrency)."""
+    err_str = str(e).strip() or repr(e)
+    return (
+        "429" in err_str
+        or "ApplicationThrottled" in err_str
+        or "MailboxConcurrency" in err_str
+    )
+
+
+def _throttle_retry_delay_seconds(attempt: int) -> float:
+    """Delay in seconds before retrying after a throttle (429). Uses exponential backoff."""
+    return 10.0 * (2**attempt)  # 10s, 20s, 40s, ...
 
 
 def _convert_sdk_message(msg: GraphSDKMessage) -> GraphMessage:
@@ -105,15 +138,38 @@ class GraphProvider:
     Uses device code flow on first run (open https://microsoft.com/devicelogin and enter the code).
     Tokens are stored in ~/.email-automation/token_cache.json and auto-refreshed on subsequent runs.
     Accesses the signed-in user's mailbox via the /me endpoint.
+
+    When http_client is provided (e.g. from webhook server lifespan), the provider uses that
+    client and the caller is responsible for closing it. When None, the SDK creates its own client.
     """
 
-    def __init__(self, tenant_id: str, client_id: str):
+    def __init__(
+        self,
+        tenant_id: str,
+        client_id: str,
+        http_client: "httpx.AsyncClient | None" = None,
+    ):
         credential = get_persistent_device_code_credential(tenant_id=tenant_id, client_id=client_id)
-        self._client = GraphServiceClient(
-            credentials=credential,
-            scopes=DELEGATED_SCOPES,
-        )
-        logger.info("graph_provider.init", tenant_id=tenant_id[:8])
+        self._http_client = http_client
+        if http_client is not None:
+            auth_provider = AzureIdentityAuthenticationProvider(
+                credential,
+                scopes=DELEGATED_SCOPES,
+            )
+            request_adapter = GraphRequestAdapter(auth_provider, client=http_client)
+            self._client = GraphServiceClient(request_adapter=request_adapter)
+        else:
+            self._client = GraphServiceClient(
+                credentials=credential,
+                scopes=DELEGATED_SCOPES,
+            )
+        logger.info("graph_provider.init", tenant_id=f"{tenant_id[:8]}...")
+
+    async def close(self) -> None:
+        """Close the HTTP client if this provider owns one (e.g. passed in from webhook lifespan)."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
     async def create_subscription(
         self,
@@ -144,27 +200,64 @@ class GraphProvider:
         from src.webhook.subscription import delete_subscription as _delete
         return await _delete(self._client, subscription_id)
 
-    async def get_message(self, message_id: str) -> GraphMessage | None:
-        """Get a single message by ID (signed-in user's mailbox). Retries up to 2 times on transient I/O/connection errors."""
-        max_attempts = 3
-        for attempt in range(max_attempts):
+    async def get_message(self, message_id: str, user_id: str | None = None) -> GraphMessage | None:
+        """Get a single message by ID. If user_id is set, use /users/{user_id}/messages/{id}; else /me/messages/{id}.
+        Retries on transient network errors and on 429 throttle (ApplicationThrottled / MailboxConcurrency)
+        with exponential backoff. ErrorItemNotFound/404 is never retried (caller handles eventual consistency)."""
+        max_network_retries = 3
+        max_throttle_retries = 5
+        for attempt in range(max(max_network_retries, max_throttle_retries)):
             try:
-                msg = await self._client.me.messages.by_message_id(message_id).get()
+                if user_id:
+                    msg = await self._client.users.by_user_id(user_id).messages.by_message_id(message_id).get()
+                else:
+                    msg = await self._client.me.messages.by_message_id(message_id).get()
                 if msg:
-                    logger.debug("graph_provider.get_message.hit", message_id=message_id)
+                    logger.debug(
+                        "graph_provider.get_message.hit",
+                        message_id=message_id,
+                        user_id=user_id,
+                    )
                     return _convert_sdk_message(msg)
                 return None
             except Exception as e:
                 err_str = str(e).strip() or repr(e)
+                # 404/ErrorItemNotFound: do not retry here; caller handles eventual consistency.
                 if "ErrorItemNotFound" in err_str or "404" in err_str:
-                    logger.debug("graph_provider.get_message.not_found", message_id=message_id)
+                    logger.debug(
+                        "graph_provider.get_message.not_found",
+                        message_id=message_id,
+                        user_id=user_id,
+                    )
                     return None
-                # Retry on transient errors (WriteError, ConnectionResetError, LocalProtocolError, etc.)
-                if attempt < max_attempts - 1 and _is_transient_network_error(e):
-                    delay = 0.5 * (attempt + 1)  # 0.5s, then 1.0s
+                # Retry on 429 throttle (MailboxConcurrency, ApplicationThrottled) with long backoff.
+                if _is_throttle_error(e):
+                    if attempt < max_throttle_retries - 1:
+                        delay = _throttle_retry_delay_seconds(attempt)
+                        logger.warning(
+                            "graph_provider.get_message.throttled",
+                            message_id=message_id,
+                            user_id=user_id,
+                            attempt=attempt + 1,
+                            retry_after_seconds=delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    logger.error(
+                        "graph_provider.get_message.error",
+                        message_id=message_id,
+                        user_id=user_id,
+                        error=err_str,
+                        error_type=type(e).__name__,
+                    )
+                    return None
+                # Retry on transient network errors (WriteError, ConnectionResetError, etc.)
+                if attempt < max_network_retries - 1 and _is_transient_network_error(e):
+                    delay = 1.0 * (attempt + 1)  # 1s, then 2s
                     logger.debug(
                         "graph_provider.get_message.retry",
                         message_id=message_id,
+                        user_id=user_id,
                         attempt=attempt + 1,
                         error_type=type(e).__name__,
                     )
@@ -173,20 +266,26 @@ class GraphProvider:
                 logger.error(
                     "graph_provider.get_message.error",
                     message_id=message_id,
+                    user_id=user_id,
                     error=err_str,
                     error_type=type(e).__name__,
                 )
                 return None
         return None
 
-    async def get_conversation(self, conversation_id: str) -> list[GraphMessage]:
-        """Get all messages in a conversation (signed-in user's mailbox).
+    async def get_conversation(self, conversation_id: str, user_id: str | None = None) -> list[GraphMessage]:
+        """Get all messages in a conversation (signed-in user's mailbox, or user_id when set).
 
         Tries filter+orderby first; on InefficientFilter falls back to filter-only
         (sort in Python), then to fetching recent messages and filtering client-side,
         so the decision agent always gets full thread context.
         """
         select = ["id", "conversationId", "internetMessageId", "subject", "body", "bodyPreview", "from", "toRecipients", "receivedDateTime", "isDraft"]
+        messages_request = (
+            self._client.users.by_user_id(user_id).messages
+            if user_id
+            else self._client.me.messages
+        )
         # Try 1: filter + orderby (preferred)
         try:
             q = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
@@ -197,7 +296,7 @@ class GraphProvider:
             config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
                 query_parameters=q,
             )
-            result = await self._client.me.messages.get(request_configuration=config)
+            result = await messages_request.get(request_configuration=config)
             messages = [_convert_sdk_message(m) for m in (result.value or [])]
             if messages:
                 logger.debug(
@@ -222,7 +321,7 @@ class GraphProvider:
             config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
                 query_parameters=q,
             )
-            result = await self._client.me.messages.get(request_configuration=config)
+            result = await messages_request.get(request_configuration=config)
             raw = result.value or []
             messages = [_convert_sdk_message(m) for m in raw]
             messages.sort(key=lambda m: m.receivedDateTime or "")
@@ -250,7 +349,7 @@ class GraphProvider:
             config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
                 query_parameters=q,
             )
-            result = await self._client.me.messages.get(request_configuration=config)
+            result = await messages_request.get(request_configuration=config)
             matching = [
                 _convert_sdk_message(m)
                 for m in (result.value or [])
@@ -347,9 +446,12 @@ class GraphProvider:
             isDraft=False,
         )
 
-    async def reply_to_message(self, message_id: str, comment: str) -> GraphMessage:
+    async def reply_to_message(
+        self, message_id: str, comment: str, user_id: str | None = None
+    ) -> GraphMessage:
         """Reply to a message using the native Graph reply API (auto-threads, saves to Sent).
         Body is sent as HTML so that newlines render correctly in Gmail and other clients.
+        When user_id is set, uses /users/{id}/messages/.../reply; else /me/messages/.../reply.
         """
         from msgraph.generated.users.item.messages.item.reply.reply_post_request_body import (
             ReplyPostRequestBody,
@@ -361,7 +463,14 @@ class GraphProvider:
             body=GraphSDKItemBody(content_type=BodyType.Html, content=html_body),
         )
         request_body = ReplyPostRequestBody(message=message)
-        await self._client.me.messages.by_message_id(message_id).reply.post(request_body)
+        if user_id:
+            await self._client.users.by_user_id(user_id).messages.by_message_id(
+                message_id
+            ).reply.post(request_body)
+        else:
+            await self._client.me.messages.by_message_id(message_id).reply.post(
+                request_body
+            )
         sent_dt = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         return GraphMessage(
             id=f"reply_{message_id}",

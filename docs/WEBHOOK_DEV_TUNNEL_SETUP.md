@@ -62,6 +62,15 @@ TARGET_SENDER=allowed-sender@example.com
 - `WEBHOOK_URL`: The dev tunnel URL from step 2 (no trailing slash).
 - `WEBHOOK_CLIENT_STATE`: Any random string (e.g. 32 chars); used to verify notifications come from your subscription.
 
+Optional webhook tuning (defaults are usually fine):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEBHOOK_SUBSCRIPTION_RESOURCE` | `me/mailFolders('Inbox')/messages` | Subscription resource (Inbox-only avoids sent-item 404s) |
+| `WEBHOOK_FETCH_MAX_ATTEMPTS` | `5` | Retries when fetching message after notification |
+| `WEBHOOK_FETCH_BASE_DELAY` | `2.0` | Base delay (seconds) for exponential backoff |
+| `WEBHOOK_FAILED_MSG_TTL_SECONDS` | `600` | TTL for "message not found" dedup (avoid re-enqueueing) |
+
 ## 4. Start the webhook server and create subscription
 
 **Terminal 1** – start the tunnel (if not already running):
@@ -107,3 +116,6 @@ Only messages from the configured `TARGET_SENDER` trigger the pipeline. Other se
 - **ValidationError when creating subscription**: Ensure the tunnel is running and the URL is reachable from the internet. Respond with HTTP 200 and the exact `validationToken` as plain text.
 - **No notifications**: Confirm the subscription was created, the tunnel is hosting, and the webhook server is running. Check Graph subscription expiration.
 - **Token expired**: Sign in again; the next run will refresh and cache tokens via the token cache.
+- **Notification delay or "email in Outlook but app doesn't see it"**: The app returns HTTP 202 to Microsoft as soon as it receives the POST (so Graph doesn't time out). Processing (fetching the message, sender filter, pipeline) runs in the background. If you still see long delays: (1) Graph can take a few seconds to a minute to emit the notification after the message lands in the mailbox. (2) Dev Tunnel adds one network hop. (3) Check that the sender is in allowed senders (`config/filter.json` or `/webhook/allowed-senders`). (4) Check logs for `sender_filter`, `skip_conversation_cooldown`, or `get_message.error` (transient errors are retried; repeated failures mean the message fetch is failing).
+- **"message_not_found_after_retry" in logs**: The subscription is **Inbox-only** by default so you should only get notifications for Inbox messages. If you still see this: (1) The message may have been moved or deleted before the app could fetch it. (2) Failed message IDs are remembered for `WEBHOOK_FAILED_MSG_TTL_SECONDS` (default 10 minutes) so the same ID is not retried endlessly. (3) Fetch uses exponential backoff (2s, 4s, 8s, 16s) to cope with Graph eventual consistency. If you previously used `me/messages`, recreate the subscription (restart with `--create-subscription`) so the new Inbox-only resource takes effect.
+- **429 ApplicationThrottled / MailboxConcurrency**: Too many concurrent requests to the same mailbox. The app retries 429 with exponential backoff (10s, 20s, 40s, …). To reduce how often this happens, lower `WEBHOOK_WORKER_COUNT` (default is 4). If you see repeated throttle errors, set `WEBHOOK_WORKER_COUNT=2` in `.env`.

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from msgraph.generated.models.subscription import Subscription as GraphSubscription
 
+from src.config import WEBHOOK_SUBSCRIPTION_RESOURCE
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -14,7 +15,6 @@ logger = get_logger("email_automation.webhook.subscription")
 
 # Mail messages: max 4230 minutes (~3 days)
 MAIL_SUBSCRIPTION_MAX_MINUTES = 4230
-RESOURCE_ME_MESSAGES = "me/messages"
 CHANGE_TYPE_CREATED = "created"
 
 
@@ -25,15 +25,15 @@ async def create_subscription(
     expiration_minutes: int = 4000,
 ) -> GraphSubscription | None:
     """
-    Create a Graph subscription for new mail messages (/me/messages, changeType=created).
-    Returns the created subscription or None on failure.
+    Create a Graph subscription for new mail messages (resource from config, changeType=created).
+    Default resource is me/mailFolders('Inbox')/messages. Returns the created subscription or None on failure.
     """
     expiration_minutes = min(expiration_minutes, MAIL_SUBSCRIPTION_MAX_MINUTES)
     expiration = datetime.now(timezone.utc) + timedelta(minutes=expiration_minutes)
     body = GraphSubscription(
         change_type=CHANGE_TYPE_CREATED,
         notification_url=notification_url,
-        resource=RESOURCE_ME_MESSAGES,
+        resource=WEBHOOK_SUBSCRIPTION_RESOURCE,
         expiration_date_time=expiration,
         client_state=client_state[:128] if client_state else None,
     )

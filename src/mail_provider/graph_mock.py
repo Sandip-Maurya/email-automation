@@ -66,7 +66,7 @@ class GraphMockProvider:
             json.dump(items, f, indent=2, default=str)
         logger.info("mail_provider.sent_written", count=len(items), sent_items_path=str(self._sent_items_path))
 
-    def get_message(self, message_id: str) -> GraphMessage | None:
+    def get_message(self, message_id: str, user_id: str | None = None) -> GraphMessage | None:
         for m in self._inbox:
             if m.id == message_id:
                 logger.debug("mail_provider.get_message.hit", message_id=message_id)
@@ -74,7 +74,7 @@ class GraphMockProvider:
         logger.debug("mail_provider.get_message.miss", message_id=message_id)
         return None
 
-    def get_conversation(self, conversation_id: str) -> list[GraphMessage]:
+    def get_conversation(self, conversation_id: str, user_id: str | None = None) -> list[GraphMessage]:
         matching = [m for m in self._inbox if m.conversationId == conversation_id]
         if not matching:
             msg = self.get_message(conversation_id)
@@ -111,7 +111,9 @@ class GraphMockProvider:
         logger.info("mail_provider.list_conversations", count=len(result))
         return result
 
-    def reply_to_message(self, message_id: str, comment: str) -> GraphMessage:
+    def reply_to_message(
+        self, message_id: str, comment: str, user_id: str | None = None
+    ) -> GraphMessage:
         log_agent_step("MailProvider", "Reply to message (mock)", {"message_id": message_id})
         logger.info("mail_provider.reply_to_message", message_id=message_id)
         sent_id = f"AAMkAG_reply_{message_id}_{len(self._load_sent())}"

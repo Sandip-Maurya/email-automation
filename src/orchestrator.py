@@ -47,8 +47,10 @@ async def process_trigger(
     provider: "MailProvider",
     message_id: str | None = None,
     conversation_id: str | None = None,
+    user_id: str | None = None,
 ) -> ProcessingResult:
-    """Trigger entry: fetch thread by message_id or conversation_id, then process and send."""
+    """Trigger entry: fetch thread by message_id or conversation_id, then process and send.
+    user_id scopes mailbox when set (e.g. from webhook notification resource path)."""
     tracer = get_tracer()
     start = perf_counter()
     log = logger.bind(message_id=message_id, conversation_id=conversation_id)
@@ -64,12 +66,14 @@ async def process_trigger(
         try:
             with tracer.start_as_current_span("fetch_thread"):
                 if message_id:
-                    msg = await _maybe_await(provider.get_message(message_id))
+                    msg = await _maybe_await(provider.get_message(message_id, user_id=user_id))
                     if msg is None:
                         log.warning("process_trigger.message_not_found")
                         raise ValueError(f"Message not found: {message_id}")
                     if msg.conversationId:
-                        messages = await _maybe_await(provider.get_conversation(msg.conversationId))
+                        messages = await _maybe_await(
+                            provider.get_conversation(msg.conversationId, user_id=user_id)
+                        )
                         if not messages:
                             log.debug(
                                 "process_trigger.conversation_empty_fallback",
@@ -80,7 +84,9 @@ async def process_trigger(
                     else:
                         messages = [msg]
                 elif conversation_id:
-                    messages = await _maybe_await(provider.get_conversation(conversation_id))
+                    messages = await _maybe_await(
+                        provider.get_conversation(conversation_id, user_id=user_id)
+                    )
                     if not messages:
                         log.warning("process_trigger.conversation_not_found")
                         raise ValueError(f"Conversation not found: {conversation_id}")
@@ -93,7 +99,11 @@ async def process_trigger(
             reply_to_message_id = message_id if message_id else (thread.latest_email.id if thread.latest_email else None)
 
             result = await process_email_thread(
-                thread, provider=provider, tracer=tracer, reply_to_message_id=reply_to_message_id
+                thread,
+                provider=provider,
+                tracer=tracer,
+                reply_to_message_id=reply_to_message_id,
+                user_id=user_id,
             )
             root_span.set_attribute("workflow.scenario", result.scenario)
 
@@ -116,8 +126,10 @@ async def process_email_thread(
     provider: "MailProvider | None" = None,
     tracer=None,
     reply_to_message_id: str | None = None,
+    user_id: str | None = None,
 ) -> ProcessingResult:
     """Run the full agentic pipeline for one email thread; if provider and reply_to_message_id are set, reply and record sent info.
+    user_id scopes the mailbox for reply when set (e.g. from webhook).
 
     When tracer is passed (e.g. from graph_workflow or process_trigger), all manual spans here nest under
     that parent. Pydantic AI Agent.instrument_all() uses the global tracer and inherits the current
@@ -247,7 +259,9 @@ async def process_email_thread(
         ):
             reply_body = final_email.body or ""
             log.debug("process_email_thread.reply_attempt", reply_to_message_id=reply_to_message_id)
-            sent_msg = await _maybe_await(provider.reply_to_message(reply_to_message_id, reply_body))
+            sent_msg = await _maybe_await(
+                provider.reply_to_message(reply_to_message_id, reply_body, user_id=user_id)
+            )
             raw_data["sent_message_id"] = sent_msg.id
             raw_data["sent_at"] = sent_msg.receivedDateTime
             log.info("process_email_thread.reply_complete", sent_message_id=sent_msg.id)

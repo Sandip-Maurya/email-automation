@@ -94,7 +94,18 @@ uv run python -m src.main webhook --port 8000 --create-subscription
 
 ### Webhook mode (real-time notifications)
 
-The app can run as a **listening service** that receives Microsoft Graph change notifications and runs the agent pipeline for new mail. For local development you need a public HTTPS URL (e.g. via [Microsoft Dev Tunnels](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/)). Full setup: **[docs/WEBHOOK_DEV_TUNNEL_SETUP.md](docs/WEBHOOK_DEV_TUNNEL_SETUP.md)**.
+The app can run as a **listening service** that receives Microsoft Graph change notifications and runs the agent pipeline for new mail. The subscription is **Inbox-only** by default (`me/mailFolders('Inbox')/messages`) to avoid notifications for sent items and folder transitions that can cause "message not found" errors. For local development you need a public HTTPS URL (e.g. via [Microsoft Dev Tunnels](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/)). Full setup: **[docs/WEBHOOK_DEV_TUNNEL_SETUP.md](docs/WEBHOOK_DEV_TUNNEL_SETUP.md)**.
+
+**Allowed senders filter**: The pipeline is triggered only for messages **from** addresses listed in a JSON config file (`config/filter.json` by default). Invalid email formats are rejected. You can list, add, and remove allowed senders via REST APIs. See **[docs/FILTER_CONFIG.md](docs/FILTER_CONFIG.md)** for the config format and `GET/POST/DELETE /webhook/allowed-senders` (and `POST .../reload`).
+
+**Webhook-related env vars** (optional overrides):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEBHOOK_SUBSCRIPTION_RESOURCE` | `me/mailFolders('Inbox')/messages` | Graph resource path for the subscription |
+| `WEBHOOK_FETCH_MAX_ATTEMPTS` | `5` | Retries when fetching a message (Graph eventual consistency) |
+| `WEBHOOK_FETCH_BASE_DELAY` | `2.0` | Base delay in seconds for exponential backoff between fetch retries |
+| `WEBHOOK_FAILED_MSG_TTL_SECONDS` | `600` | How long to remember failed message IDs (avoid re-enqueueing) |
 
 ## Data
 
