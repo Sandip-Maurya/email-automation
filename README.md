@@ -6,10 +6,11 @@ Multi-agent email automation system for pharmaceutical trade operations. The sys
 
 - **Multi-Agent Pipeline**: Decision → Input → Draft → Review → Email agents
 - **4 Scenario Types**: Product Supply (S1), Product Access (S2), Product Allocation (S3), Catch-All (S4)
+- **Externalized Agent Config**: Prompts, model settings, and scenario wiring in `config/agents.yaml`; config API and `validate-config` CLI for validation and hot-reload
 - **Phoenix Dashboard**: Full OpenTelemetry tracing with LLM call visualization
 - **Structured Logging**: Colored console output + JSONL file logging via Structlog
 - **Graph API Ready**: Azure AD app registration with verified credentials
-- **CLI Modes**: Interactive, batch, graph (latest from sender), webhook (listening)
+- **CLI Modes**: Interactive, batch, graph (latest from sender), webhook (listening), validate-config
 
 ## Architecture
 
@@ -90,6 +91,9 @@ uv run python -m src.main graph --sender=someone@example.com
 
 # Webhook mode - listen for Graph notifications and trigger pipeline (see docs/WEBHOOK_DEV_TUNNEL_SETUP.md)
 uv run python -m src.main webhook --port 8000 --create-subscription
+
+# Validate agent config (agents.yaml and scenario wiring)
+uv run python -m src.main validate-config
 ```
 
 ### Webhook mode (real-time notifications)
@@ -97,6 +101,8 @@ uv run python -m src.main webhook --port 8000 --create-subscription
 The app can run as a **listening service** that receives Microsoft Graph change notifications and runs the agent pipeline for new mail. The subscription is **Inbox-only** by default (`me/mailFolders('Inbox')/messages`) to avoid notifications for sent items and folder transitions that can cause "message not found" errors. For local development you need a public HTTPS URL (e.g. via [Microsoft Dev Tunnels](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/)). Full setup: **[docs/WEBHOOK_DEV_TUNNEL_SETUP.md](docs/WEBHOOK_DEV_TUNNEL_SETUP.md)**.
 
 **Allowed senders filter**: The pipeline is triggered only for messages **from** addresses listed in a JSON config file (`config/filter.json` by default). Invalid email formats are rejected. You can list, add, and remove allowed senders via REST APIs. See **[docs/FILTER_CONFIG.md](docs/FILTER_CONFIG.md)** for the config format and `GET/POST/DELETE /webhook/allowed-senders` (and `POST .../reload`).
+
+**Agent config API**: When the webhook server is running, you can read and update agent prompts and model settings via `GET/PUT /config/agents`, `POST /config/agents/reload`, and `GET /config/scenarios`. See **[docs/AGENTS_CONFIG.md](docs/AGENTS_CONFIG.md)**.
 
 **Webhook-related env vars** (optional overrides):
 
@@ -106,6 +112,13 @@ The app can run as a **listening service** that receives Microsoft Graph change 
 | `WEBHOOK_FETCH_MAX_ATTEMPTS` | `5` | Retries when fetching a message (Graph eventual consistency) |
 | `WEBHOOK_FETCH_BASE_DELAY` | `2.0` | Base delay in seconds for exponential backoff between fetch retries |
 | `WEBHOOK_FAILED_MSG_TTL_SECONDS` | `600` | How long to remember failed message IDs (avoid re-enqueueing) |
+
+## Agent configuration
+
+Agent prompts, model defaults, and scenario wiring (which input/trigger/draft per scenario) are defined in **`config/agents.yaml`**. The app fails at startup if this file is missing. Override the path with `AGENTS_CONFIG_PATH`.
+
+- **Validate config**: `uv run python -m src.main validate-config` — checks YAML and scenario references, prints a summary table.
+- **Config API** (with webhook server): `GET/PUT /config/agents`, `POST /config/agents/reload`, `GET /config/scenarios`. See [docs/AGENTS_CONFIG.md](docs/AGENTS_CONFIG.md).
 
 ## Data
 
@@ -187,8 +200,13 @@ The script will:
 
 ```
 email-automation/
+├── config/
+│   ├── agents.yaml          # Agent prompts, model settings, scenario wiring (required)
+│   └── filter.json          # Webhook allowed senders
 ├── src/
-│   ├── agents/              # AI agents (decision, input, draft, review, email)
+│   ├── agents/              # AI agents (prompts from config/agents.yaml)
+│   │   ├── registry.py          # Load YAML, get_agent(), get_scenario_config(), reload
+│   │   ├── input_registry.py    # Map agent ID → extract function
 │   │   ├── decision_agent.py    # A0: Scenario classification
 │   │   ├── input_agents.py      # A1-A4: Data extraction
 │   │   ├── draft_agents.py      # A7, A8: Email drafting
@@ -202,7 +220,8 @@ email-automation/
 │   │   ├── email.py             # Email and thread models
 │   │   ├── inputs.py            # Extracted input models
 │   │   └── outputs.py           # Processing result models
-│   ├── triggers/            # External API integrations
+│   ├── triggers/            # External API integrations (registered by name in config)
+│   │   ├── registry.py          # register_trigger(), get_trigger(), list_triggers()
 │   │   ├── inventory_api.py     # S1: 852/Value Track
 │   │   ├── access_api.py        # S2: Class of Trade/REMS
 │   │   ├── allocation_api.py    # S3: DCS allocation
@@ -224,6 +243,7 @@ email-automation/
 │   ├── processing_log.csv   # Summary log
 │   └── sent_items.json      # Sent emails
 ├── docs/
+│   ├── AGENTS_CONFIG.md             # agents.yaml, validate-config, Config API
 │   ├── AZURE_SETUP_GUIDE.md         # Azure portal setup
 │   ├── GRAPH_API_INTEGRATION_GUIDE.md # Python Graph API guide
 │   └── IMPLEMENTATION_STATUS.md     # Feature status and roadmap
@@ -236,6 +256,7 @@ email-automation/
 
 | Document | Description |
 |----------|-------------|
+| [Agents Config](docs/AGENTS_CONFIG.md) | agents.yaml, validate-config CLI, Config API (GET/PUT agents, reload) |
 | [Azure Setup Guide](docs/AZURE_SETUP_GUIDE.md) | Complete Azure AD app registration walkthrough |
 | [Graph API Integration Guide](docs/GRAPH_API_INTEGRATION_GUIDE.md) | Python implementation guide for Graph email operations |
 | [Implementation Status](docs/IMPLEMENTATION_STATUS.md) | Feature status, architecture details, and roadmap |

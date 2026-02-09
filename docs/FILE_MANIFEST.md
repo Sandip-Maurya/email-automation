@@ -6,85 +6,58 @@ A guide to every file, folder, module, class, and function in the email-automati
 
 ## 1. Project Overview
 
-This project is a **multi-agent email automation system** for pharmaceutical trade operations. It ingests incoming emails (from mock JSON/CSV or Microsoft Graph API), classifies each thread into one of four scenarios (Product Supply, Product Access, Product Allocation, or Catch-All), extracts structured data via LLM agents, calls scenario-specific mock APIs (inventory, access, allocation, RAG), drafts and reviews reply content with AI agents, and optionally sends the reply via a configurable mail provider. It supports interactive, batch, Graph, and webhook CLI modes, with structured logging and Phoenix/OpenTelemetry tracing.
+This project is a **multi-agent email automation system** for pharmaceutical trade operations. It ingests incoming emails (from mock JSON/CSV or Microsoft Graph API), classifies each thread into one of four scenarios (Product Supply, Product Access, Product Allocation, or Catch-All), extracts structured data via LLM agents, calls scenario-specific mock APIs (inventory, access, allocation, RAG), drafts and reviews reply content with AI agents, and optionally sends the reply via a configurable mail provider. It supports interactive, batch, Graph, and webhook CLI modes, with structured logging and Phoenix/OpenTelemetry tracing. **Agent prompts, model settings, and scenario wiring** are externalized in `config/agents.yaml` and loaded via registries; the orchestrator dispatches by config (see [AGENTS_CONFIG.md](AGENTS_CONFIG.md)).
 
 ---
 
 ## 2. Architecture / Data-Flow Diagram
 
-```mermaid
-flowchart TB
-    subgraph entry [Entry Points]
-        CLI[CLI Typer App]
-        Interactive[interactive]
-        Batch[batch]
-        Graph[graph]
-        Webhook[webhook]
-    end
+Plain-text diagram (no Mermaid required):
 
-    subgraph provider [Mail Provider]
-        Protocol[MailProvider Protocol]
-        Mock[GraphMockProvider]
-        Real[GraphProvider]
-    end
+```
+[ENTRY]
+main.py -> Typer CLI -> interactive | batch | graph | webhook | validate-config
+                   |
+                   v
+        orchestrator.process_trigger(message_id, provider, user_id)
+                   |
+                   v
+[MAIL PROVIDER + MAPPING]
+GraphMockProvider (JSON)  GraphProvider (Real, MSAL cache)
+             \                    /
+              \---> MailProvider Protocol
+                         |
+      get_message/get_conversation (GraphMessage list)
+                         v
+         mapping.graph_messages_to_thread() -> EmailThread
+                         |
+                         v
+[PIPELINE]
+A0 Decision Agent -> ScenarioDecision (S1-S4, confidence)
+        |
+        v
+config/agents.yaml
+  -> Agent Registry (A0/A7/A8/A10/A11 prompts)
+  -> Input Registry (A1-A4 extractors)
+  -> Trigger Registry (S1-S4 trigger functions)
+        |
+        v
+A1-A4 Extract -> Trigger APIs (inventory/access/allocation/RAG)
+        |
+        v
+A7/A8 Draft -> A10 Review -> A11 Email format
+        |
+        v
+mapping.final_email_to_send_payload()
+        |
+        v
+provider.reply_to_message() -> ProcessingResult
 
-    subgraph pipeline [Processing Pipeline]
-        Fetch[Fetch Thread]
-        A0[Decision Agent A0]
-        Branch[Scenario Branch]
-        A1[A1 Extract S1]
-        A2[A2 Extract S2]
-        A3[A3 Extract S3]
-        A4[A4 Extract S4]
-        Triggers[Trigger APIs]
-        A7[A7 Draft S1/S2]
-        A8[A8 Draft S3/S4]
-        A10[Review Agent A10]
-        A11[Email Agent A11]
-        Send[Send Reply]
-    end
+[WEBHOOK SUPPORT]
+Filter config + Dedup store (applied before processing)
 
-    subgraph support [Supporting Systems]
-        Logger[Logger]
-        Tracing[Tracing]
-        Auth[MSAL Token Cache]
-        Dedup[DedupStore]
-        Filter[Filter Config]
-    end
-
-    CLI --> Interactive
-    CLI --> Batch
-    CLI --> Graph
-    CLI --> Webhook
-    Interactive --> Fetch
-    Batch --> Fetch
-    Graph --> Real
-    Webhook --> Real
-    Real --> Protocol
-    Mock --> Protocol
-    Fetch --> Protocol
-    Fetch --> pipeline
-    A0 --> Branch
-    Branch --> A1
-    Branch --> A2
-    Branch --> A3
-    Branch --> A4
-    A1 --> Triggers
-    A2 --> Triggers
-    A3 --> Triggers
-    A4 --> Triggers
-    Triggers --> A7
-    Triggers --> A8
-    A7 --> A10
-    A8 --> A10
-    A10 --> A11
-    A11 --> Send
-    Send --> Protocol
-    pipeline --> Logger
-    pipeline --> Tracing
-    Real --> Auth
-    Webhook --> Dedup
-    Webhook --> Filter
+[OBSERVABILITY]
+Structlog logging + Phoenix/OTel tracing (runs alongside pipeline)
 ```
 
 ---
@@ -98,6 +71,7 @@ email-automation/
 ├── README.md
 ├── uv.lock
 ├── config/
+│   ├── agents.yaml
 │   ├── filter.example.json
 │   └── filter.json
 ├── docs/
@@ -118,11 +92,12 @@ email-automation/
 │   ├── orchestrator.py
 │   ├── agents/
 │   │   ├── __init__.py
-│   │   ├── base.py
 │   │   ├── decision_agent.py
 │   │   ├── draft_agents.py
 │   │   ├── email_agent.py
 │   │   ├── input_agents.py
+│   │   ├── input_registry.py
+│   │   ├── registry.py
 │   │   └── review_agent.py
 │   ├── auth/
 │   │   ├── __init__.py
@@ -133,6 +108,7 @@ email-automation/
 │   │   ├── graph_mode.py
 │   │   ├── interactive_mode.py
 │   │   ├── shared.py
+│   │   ├── validate_config.py
 │   │   └── webhook_mode.py
 │   ├── mail_provider/
 │   │   ├── __init__.py
@@ -152,7 +128,8 @@ email-automation/
 │   │   ├── access_api.py
 │   │   ├── allocation_api.py
 │   │   ├── inventory_api.py
-│   │   └── rag_search.py
+│   │   ├── rag_search.py
+│   │   └── registry.py
 │   ├── utils/
 │   │   ├── __init__.py
 │   │   ├── body_sanitizer.py
@@ -163,6 +140,7 @@ email-automation/
 │   │   └── tracing.py
 │   └── webhook/
 │       ├── __init__.py
+│       ├── config_routes.py
 │       ├── dedup_store.py
 │       ├── filter_config.py
 │       ├── models.py
@@ -170,6 +148,7 @@ email-automation/
 │       └── subscription.py
 └── tests/
     ├── __init__.py
+    ├── test_agent_registry.py
     └── test_dedup_store.py
 ```
 
@@ -192,6 +171,7 @@ email-automation/
 
 | File | Purpose |
 |------|--------|
+| **agents.yaml** | Agent prompts, model defaults, and scenario wiring (input_agent, trigger, draft_agent, low_confidence_threshold). Required; fail-fast if missing. See [AGENTS_CONFIG.md](AGENTS_CONFIG.md). |
 | **filter.json** | Webhook allowed-senders list (JSON array); only notifications from these addresses trigger processing. |
 | **filter.example.json** | Example template for filter config with sample sender addresses. |
 
@@ -204,6 +184,7 @@ email-automation/
 | **AZURE_SETUP_GUIDE.md** | Step-by-step Azure AD app registration and Graph API permissions for delegated/application auth. |
 | **component_diagram.jpg** | Visual component diagram image. |
 | **FILTER_CONFIG.md** | Allowed-senders filter format and REST API for managing senders. |
+| **AGENTS_CONFIG.md** | Agent config (agents.yaml), validate-config CLI, and Config API (GET/PUT agents, reload, scenarios). |
 | **FILE_MANIFEST.md** | This file: manifest of all files, modules, classes, and functions. |
 | **CORE_WORKFLOW.md** | Core workflow: high-level pipeline and per-scenario (S1–S4) flow with ASCII diagrams. |
 | **GRAPH_API_INTEGRATION_GUIDE.md** | Python Graph API integration: auth, read/send mail, models, error handling, examples. |
@@ -232,11 +213,11 @@ email-automation/
 | **config.py** | Centralized configuration from environment variables. |
 | **Classes / Functions** | |
 | (module-level constants) | PROJECT_ROOT, DATA_DIR, OUTPUT_DIR, INBOX_PATH, SENT_ITEMS_PATH, OPENAI_API_KEY, LOG_DIR, LOG_FILE, LOG_LEVEL, VERBOSE_LOGGING, PHOENIX_*, TARGET_SENDER, WEBHOOK_*, DEDUP_*, etc. |
-| **orchestrator.py** | Orchestrates the full email workflow: fetch thread, A0 → branch → A7/A8 → A10 → A11 → send. |
+| **orchestrator.py** | Orchestrates the full email workflow: fetch thread, A0 → scenario branch → A10 → A11 → send. Scenario branch is **config-driven**: loads scenario from registry, dispatches via get_input_agent(), get_trigger(), get_agent(), get_user_prompt_template(). |
 | **Functions** | |
 | `_maybe_await()` | Awaits coroutines or returns sync values (for provider compatibility). |
 | `process_trigger()` | Entry point: fetches thread by message_id/conversation_id, runs pipeline, sends reply. |
-| `process_email_thread()` | Runs decision → input extraction → trigger API → draft → review → format → send with tracing. |
+| `process_email_thread()` | Runs decision → (generic) input extraction → trigger → draft → review → format → send with tracing. |
 
 ---
 
@@ -276,29 +257,41 @@ email-automation/
 
 | File | Purpose |
 |------|--------|
-| **__init__.py** | Package marker; re-exports agents and run functions. |
-| **base.py** | Factory for Pydantic AI agents with shared config (OpenAI GPT-4o-mini, retries). |
+| **__init__.py** | Package marker; re-exports registry functions, input_registry, and run functions (classify_thread, extract_*, draft_*, review_draft, format_final_email). |
+| **registry.py** | Loads config/agents.yaml (fail-fast if missing); creates and caches Pydantic AI agents from config. |
 | **Functions** | |
-| `create_agent()` | Creates a Pydantic AI agent from name, system prompt, and optional kwargs. |
-| **decision_agent.py** | Agent A0: classifies email thread into scenario S1/S2/S3/S4. |
+| `_load_config()` | Loads and validates YAML; validates scenario→agent references. |
+| `reload_config()` | Clears cache and re-reads YAML. |
+| `get_agent(agent_id, output_type)` | Returns cached or newly created Agent from config. |
+| `get_agent_config(agent_id)` | Returns merged defaults + per-agent config. |
+| `get_user_prompt_template(agent_id)` | Returns user prompt template string or None. |
+| `get_scenario_config(scenario)` | Returns scenario dict (input_agent, trigger, draft_agent, low_confidence_threshold, etc.). |
+| `get_all_config()` | Returns full parsed config (for API). |
+| `save_config(config)` | Writes config to YAML and reloads. |
+| **input_registry.py** | Maps agent IDs to (extract_fn, input_type); used by orchestrator for generic dispatch. |
 | **Functions** | |
-| `_thread_to_prompt()` | Builds prompt text from thread for the decision agent. |
+| `register_input_agent(agent_id, input_type)` | Decorator to register an extract function. |
+| `get_input_agent(agent_id)` | Returns (extract_fn, input_type). |
+| `list_input_agents()` | Returns registered input agent IDs. |
+| **decision_agent.py** | Agent A0: classifies email thread into scenario S1/S2/S3/S4. Uses get_agent("A0_decision", ScenarioDecision); prompt from config. |
+| **Functions** | |
+| `_thread_to_prompt()` | Builds prompt text from thread. |
 | `classify_thread()` | Returns ScenarioDecision (scenario, confidence, reasoning). |
-| **input_agents.py** | Agents A1–A4: extract structured inputs per scenario. |
+| **input_agents.py** | Agents A1–A4: extract structured inputs per scenario. Each extract function is decorated with @register_input_agent; uses get_agent() with config prompt. |
 | **Functions** | |
 | `_thread_prompt()` | Builds thread summary for input agents. |
-| `extract_supply()` | A1: extracts ProductSupplyInput for S1. |
-| `extract_access()` | A2: extracts ProductAccessInput for S2. |
-| `extract_allocation()` | A3: extracts ProductAllocationInput for S3. |
-| `extract_catchall()` | A4: extracts CatchAllInput for S4. |
-| **draft_agents.py** | Agents A7, A8: generate draft reply emails. |
+| `extract_supply()` | A1: ProductSupplyInput (registered as A1_supply_extract). |
+| `extract_access()` | A2: ProductAccessInput (A2_access_extract). |
+| `extract_allocation()` | A3: ProductAllocationInput (A3_allocation_extract). |
+| `extract_catchall()` | A4: CatchAllInput (A4_catchall_extract). |
+| **draft_agents.py** | Agents A7, A8: generate draft reply emails. Use get_agent() and get_user_prompt_template() from config. |
 | **Functions** | |
-| `draft_supply_or_access()` | A7: drafts reply for S1 or S2 from inputs and trigger data. |
-| `draft_allocation_or_catchall()` | A8: drafts reply for S3 or S4 from inputs and trigger data. |
-| **review_agent.py** | Agent A10: quality check and accuracy verification of draft. |
+| `draft_supply_or_access()` | A7: drafts reply for S1 or S2. |
+| `draft_allocation_or_catchall()` | A8: drafts reply for S3 or S4. |
+| **review_agent.py** | Agent A10: quality check; uses get_agent("A10_review") and template from config. |
 | **Functions** | |
 | `review_draft()` | Returns ReviewResult (approved/needs_human_review, confidence, notes, suggestions). |
-| **email_agent.py** | Agent A11: final formatting and output generation. |
+| **email_agent.py** | Agent A11: final formatting; uses get_agent("A11_format") and template from config. |
 | **Functions** | |
 | `format_final_email()` | Produces FinalEmail; adds human-review header if flagged, personalizes with sender name. |
 
@@ -342,21 +335,16 @@ email-automation/
 
 | File | Purpose |
 |------|--------|
-| **__init__.py** | Package marker; re-exports trigger functions. |
-| **inventory_api.py** | Mock Inventory API for S1 (852/Value Track style). |
+| **__init__.py** | Package marker; re-exports get_trigger, list_triggers, register_trigger, and trigger functions (so decorators run on import). |
+| **registry.py** | Trigger function registry: maps trigger names (from config) to async callables. |
 | **Functions** | |
-| `_parse_inventory_rows()` | Parses CSV rows into InventoryRecord list. |
-| `inventory_api_fetch()` | Returns inventory data dict filtered by NDC, distributor, location. |
-| **access_api.py** | Mock Access API for S2 (class of trade, REMS). |
-| **Functions** | |
-| `_parse_bool()` | Parses boolean from CSV/API values. |
-| `access_api_fetch()` | Returns customer/access data dict matched by DEA or customer name. |
-| **allocation_api.py** | Mock Allocation API for S3 (DCS-style). |
-| **Functions** | |
-| `allocation_api_simulate()` | Returns allocation data dict filtered by NDC, distributor, year range. |
-| **rag_search.py** | Mock RAG search for S4 (similar past emails). |
-| **Functions** | |
-| `rag_search_find_similar()` | Returns similar past emails dict by topics/question summary. |
+| `register_trigger(name)` | Decorator to register a trigger function. |
+| `get_trigger(name)` | Returns the trigger function; raises ValueError if unknown. |
+| `list_triggers()` | Returns registered trigger names. |
+| **inventory_api.py** | Mock Inventory API for S1; `inventory_api_fetch()` decorated with @register_trigger("inventory_api"). |
+| **access_api.py** | Mock Access API for S2; `access_api_fetch()` with @register_trigger("access_api"). |
+| **allocation_api.py** | Mock Allocation API for S3; `allocation_api_simulate()` with @register_trigger("allocation_api"). |
+| **rag_search.py** | Mock RAG search for S4; `rag_search_find_similar()` with @register_trigger("rag_search"). |
 
 ---
 
@@ -406,30 +394,18 @@ email-automation/
 
 | File | Purpose |
 |------|--------|
-| **__init__.py** | Typer app setup; registers interactive, batch, graph, webhook commands; initializes tracing. |
+| **__init__.py** | Typer app setup; registers interactive, batch, graph, webhook, validate-config commands; initializes tracing. |
 | **Functions** | |
 | `register_commands()` | Registers all CLI commands with the Typer app. |
 | **shared.py** | Shared CLI helpers: console, logger, output paths, result formatting. |
+| **validate_config.py** | Validates config/agents.yaml: checks scenario→agent and scenario→trigger references, prints summary table. |
 | **Functions** | |
-| `get_mock_provider()` | Returns GraphMockProvider for given inbox/sent paths. |
-| `ensure_output_dirs()` | Creates output directories. |
-| `write_json_result()` | Writes result dict to JSON file. |
-| `append_csv_log_row()` | Appends a CSV log row. |
-| `result_to_serializable()` | Converts ProcessingResult to dict. |
-| `print_result()` | Prints result to console. |
-| `processing_log_row()` | Builds CSV row dict from ProcessingResult. |
+| `validate_config()` | CLI command for `validate-config`. |
 | **interactive_mode.py** | Interactive mode: list conversations, pick one, process and send. |
-| **Functions** | |
-| `interactive()` | Runs interactive loop with Rich table and user selection. |
 | **batch_mode.py** | Batch mode: process all conversations in inbox. |
-| **Functions** | |
-| `batch()` | Processes all conversations; writes JSON and CSV results. |
 | **graph_mode.py** | Graph mode: process latest email from sender via real Graph API. |
-| **Functions** | |
-| `graph()` | Fetches latest from sender, shows draft for confirmation, then sends. |
 | **webhook_mode.py** | Webhook mode: run FastAPI listener for Graph change notifications. |
-| **Functions** | |
-| `webhook()` | Starts webhook server; optionally creates Graph subscription. |
+| **Functions** | (shared.py) get_mock_provider(), ensure_output_dirs(), write_json_result(), append_csv_log_row(), result_to_serializable(), print_result(), processing_log_row(). (Mode modules) interactive(), batch(), graph(), webhook(). |
 
 ---
 
@@ -459,18 +435,10 @@ email-automation/
 | `ResourceData` | Resource data in notification: odata_type, id. |
 | `ChangeNotification` | Single change notification: change_type, client_state, resource, resource_data, subscription_id, etc. |
 | `ChangeNotificationBatch` | Request body: value (list of ChangeNotification). |
-| **server.py** | FastAPI webhook server: validation, notification handler, worker pool, dedup, allowed-senders filter. |
-| **Functions** | |
-| `_parse_notification_resource()` | Extracts message_id and user_id from notification. |
-| `_run_process_trigger()` | Runs process_trigger in background. |
-| `_process_notification_message()` | Processes one message with retries, sender filter, dedup. |
-| `_notification_worker()` | Worker loop: consumes queue, processes notifications. |
-| `_setup_workers()` | Creates queue and worker pool. |
-| `_setup_provider()` | Creates GraphProvider and subscription manager. |
-| `_shutdown_tasks()` | Shuts down workers and closes connections. |
-| `_lifespan()` | FastAPI lifespan: setup provider, workers; shutdown. |
-| `create_app()` | Creates FastAPI app with routes and lifespan. |
-| **Endpoints** | GET/POST /webhook/notifications, GET /health, GET/POST/DELETE /webhook/allowed-senders, POST /webhook/allowed-senders/reload. |
+| **server.py** | FastAPI webhook server: validation, notification handler, worker pool, dedup, allowed-senders filter; includes config router. |
+| **config_routes.py** | Config API router: GET/PUT /config/agents, POST /config/agents/reload, GET /config/scenarios. |
+| **Endpoints** | GET/POST /webhook/notifications, GET /health, GET/POST/DELETE /webhook/allowed-senders, POST /webhook/allowed-senders/reload; GET/PUT /config/agents, GET/PUT /config/agents/{id}, POST /config/agents/reload, GET /config/scenarios, GET /config/scenarios/{id}. |
+| **Functions** (server.py) | _parse_notification_resource(), _run_process_trigger(), _process_notification_message(), _notification_worker(), _setup_workers(), _setup_provider(), _shutdown_tasks(), _lifespan(), create_app(). |
 | **subscription.py** | Graph subscription lifecycle. |
 | **Functions** | |
 | `create_subscription()` | Creates webhook subscription. |
@@ -497,18 +465,21 @@ email-automation/
 | File | Purpose |
 |------|--------|
 | **__init__.py** | Package marker for tests. |
+| **test_agent_registry.py** | Unit tests for agent registry: fail-fast missing config, config structure, get_agent_config merging, get_scenario_config, get_user_prompt_template, agent caching, reload_config. |
 | **test_dedup_store.py** | Unit tests for DedupStore. |
-| **Tests** | test_triggered_persistence, test_conversation_cooldown, test_processing_in_flight, test_mark_triggered_atomic. |
+| **Tests** (dedup) | test_triggered_persistence, test_conversation_cooldown, test_processing_in_flight, test_mark_triggered_atomic. |
 
 ---
 
 ## 5. Scenario Quick Reference
 
-| Scenario | Name            | Input Agent | Trigger API           | Draft Agent |
-|----------|-----------------|-------------|------------------------|-------------|
-| S1       | Product Supply  | A1          | inventory_api_fetch    | A7          |
-| S2       | Product Access  | A2          | access_api_fetch       | A7          |
-| S3       | Product Allocation | A3        | allocation_api_simulate| A8          |
-| S4       | Catch-All       | A4          | rag_search_find_similar| A8          |
+Scenario wiring is defined in **config/agents.yaml** (see [AGENTS_CONFIG.md](AGENTS_CONFIG.md)). The orchestrator looks up input_agent, trigger, and draft_agent by scenario code.
+
+| Scenario | Name            | Input Agent (config) | Trigger (config) | Draft Agent (config) |
+|----------|-----------------|----------------------|------------------|----------------------|
+| S1       | Product Supply  | A1_supply_extract    | inventory_api    | A7_draft             |
+| S2       | Product Access  | A2_access_extract    | access_api       | A7_draft             |
+| S3       | Product Allocation | A3_allocation_extract | allocation_api | A8_draft             |
+| S4       | Catch-All       | A4_catchall_extract  | rag_search       | A8_draft             |
 
 After drafting, all scenarios flow through **Review Agent A10** and **Email Agent A11**, then send via the configured **MailProvider**.

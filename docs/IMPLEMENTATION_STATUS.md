@@ -108,7 +108,7 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 |---------|--------|-------------|
 | Trigger Processing | ✅ Complete | Entry point for message/conversation triggers |
 | Thread Fetching | ✅ Complete | Fetch and convert Graph messages to internal models |
-| Scenario Branching | ✅ Complete | Route to appropriate input/draft agents |
+| Scenario Branching | ✅ Complete | Config-driven: looks up scenario in `config/agents.yaml` and uses registries for input agent, trigger, and draft agent |
 | OpenTelemetry Spans | ✅ Complete | Full tracing with custom attributes |
 | Error Recording | ✅ Complete | Exception recording in spans |
 
@@ -153,6 +153,7 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 | Feature | Description | Files |
 |---------|-------------|-------|
 | Multi-Agent Pipeline | Full A0→A1-4→A7/A8→A10→A11 pipeline | `src/agents/`, `src/orchestrator.py` |
+| Configuration Externalization | Prompts, model settings, scenario wiring in `config/agents.yaml`; Config API and `validate-config` CLI | `config/agents.yaml`, `src/agents/registry.py`, `src/webhook/config_routes.py`, `src/cli/validate_config.py` |
 | Scenario Classification | S1 (Supply), S2 (Access), S3 (Allocation), S4 (Catch-All) | `src/agents/decision_agent.py` |
 | Structured Logging | Structlog with console (colored) + JSONL file output | `src/utils/logger.py` |
 | Phoenix Tracing | OpenTelemetry integration with Phoenix dashboard | `src/utils/tracing.py` |
@@ -176,7 +177,6 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 |---------|----------|-------|
 | Real Inventory API Integration | High | Connect to actual 852/Value Track data sources |
 | Real Access API Integration | High | Connect to REMS/Class of Trade systems |
-| Webhook Trigger Support | Medium | Handle real-time Graph notifications |
 | Email Attachments | Medium | Process and include attachments |
 | Human Review Dashboard | Low | Web UI for reviewing flagged emails |
 | Batch Retry Logic | Low | Retry failed conversations in batch mode |
@@ -318,6 +318,7 @@ The `scripts/verify_graph_credentials.py` script provides:
 
 | Package | Version | Purpose |
 |---------|---------|---------|
+| `pyyaml` | ≥6.0 | Load and save `config/agents.yaml` |
 | `pydantic-ai` | ≥0.0.24 | Multi-agent framework |
 | `pydantic` | ≥2.0 | Data validation and models |
 | `openai` | ≥1.0 | LLM API client |
@@ -366,11 +367,27 @@ The `scripts/verify_graph_credentials.py` script provides:
 
 | Path | Description |
 |------|-------------|
+| `config/agents.yaml` | **Required.** Agent prompts, model defaults, scenario wiring (input_agent, trigger, draft_agent, low_confidence_threshold). Override with `AGENTS_CONFIG_PATH`. |
+| `config/filter.json` | Webhook allowed senders (see docs/FILTER_CONFIG.md). |
 | `data/inbox.json` | Input emails (Graph message format) |
 | `output/responses.json` | Processing results |
 | `output/processing_log.csv` | Processing log with summary |
 | `output/sent_items.json` | Sent email store |
 | `output/logs/app.jsonl` | Application logs (JSON Lines) |
+
+### Config API (Webhook Server)
+
+When the webhook server is running:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/config/agents` | GET | Full agents config (defaults, agents, scenarios) |
+| `/config/agents` | PUT | Update and persist agents config |
+| `/config/agents/reload` | POST | Reload config from disk (no body) |
+| `/config/scenarios` | GET | List scenario IDs and wiring |
+| `/config/scenarios/{id}` | GET | Single scenario config |
+
+See [docs/AGENTS_CONFIG.md](AGENTS_CONFIG.md). Validate config from CLI: `uv run python -m src.main validate-config`.
 
 ---
 
@@ -384,7 +401,7 @@ The `scripts/verify_graph_credentials.py` script provides:
 
 4. **Sync Mock Provider**: GraphMockProvider uses synchronous file I/O (acceptable for mock; real provider is async).
 
-5. **No Webhook Support**: Graph change notifications (webhooks) not implemented; polling-based only.
+5. **Webhook Support**: Implemented for Graph change notifications (subscriptions, validation, allowed-senders filter). See docs for tunnel and setup.
 
 6. **LLM Dependency**: All agents require OpenAI API; no fallback to local models.
 
@@ -407,7 +424,8 @@ The `scripts/verify_graph_credentials.py` script provides:
 - [ ] Implement real RAG search with vector store
 
 ### Phase 3: Enhanced Features
-- [ ] Webhook trigger support (Graph subscriptions)
+- [x] Webhook trigger support (Graph subscriptions, config API)
+- [x] Configuration externalization (agents.yaml, validate-config, Config API)
 - [ ] Attachment processing
 - [ ] Human review web dashboard
 - [ ] Multi-recipient support
@@ -434,6 +452,9 @@ uv run python -m src.main interactive
 
 # Batch mode
 uv run python -m src.main batch
+
+# Validate agent config
+uv run python -m src.main validate-config
 
 # Verify Azure credentials
 uv run python scripts/verify_graph_credentials.py        # Delegated

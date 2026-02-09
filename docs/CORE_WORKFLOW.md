@@ -6,7 +6,7 @@ This document describes the core processing workflow at a high level, then in de
 
 ## High-Level Pipeline (All Scenarios)
 
-Every email thread is processed by the same pipeline: **fetch thread → classify (A0) → scenario branch (extract → trigger API → draft) → review (A10) → format (A11) → send**. Only the middle branch (which input agent, which trigger API, which draft agent) varies by scenario.
+Every email thread is processed by the same pipeline: **fetch thread → classify (A0) → scenario branch (extract → trigger API → draft) → review (A10) → format (A11) → send**. Only the middle branch (which input agent, which trigger API, which draft agent) varies by scenario. **Scenario wiring** (input agent ID, trigger name, draft agent ID, low-confidence threshold) is defined in **`config/agents.yaml`** and applied at runtime via the agent and trigger registries; the orchestrator looks up the active scenario’s config and dispatches accordingly.
 
 ```
   +------------------+
