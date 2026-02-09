@@ -3,11 +3,13 @@
 from typing import Any
 
 from src.models.inputs import CatchAllInput
+from src.triggers.registry import register_trigger
 from src.utils.csv_loader import load_past_emails
 from src.utils.logger import log_agent_step
 from src.utils.tracing import get_tracer
 
 
+@register_trigger("rag_search")
 async def rag_search_find_similar(inputs: CatchAllInput) -> dict[str, Any]:
     """Mock RAG: return pre-defined similar past emails for demo."""
     tracer = get_tracer()

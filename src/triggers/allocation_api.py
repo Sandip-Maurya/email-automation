@@ -3,11 +3,13 @@
 from typing import Any
 
 from src.models.inputs import ProductAllocationInput
+from src.triggers.registry import register_trigger
 from src.utils.csv_loader import load_allocations
 from src.utils.logger import log_agent_step
 from src.utils.tracing import get_tracer
 
 
+@register_trigger("allocation_api")
 async def allocation_api_simulate(inputs: ProductAllocationInput) -> dict[str, Any]:
     """Mock allocation simulation: pull allocation from DCS, spec-buy style metrics."""
     tracer = get_tracer()

@@ -4,6 +4,7 @@ from typing import Any
 
 from src.models.inputs import ProductSupplyInput
 from src.models.data import InventoryRecord
+from src.triggers.registry import register_trigger
 from src.utils.csv_loader import load_inventory
 from src.utils.logger import log_agent_step
 from src.utils.tracing import get_tracer
@@ -28,6 +29,7 @@ def _parse_inventory_rows(rows: list[dict[str, Any]]) -> list[InventoryRecord]:
     return out
 
 
+@register_trigger("inventory_api")
 async def inventory_api_fetch(inputs: ProductSupplyInput) -> dict[str, Any]:
     """Mock fetch from 852 (CDP/Azure) and Value Track (IQVIA), then calculate inventory."""
     tracer = get_tracer()

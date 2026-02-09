@@ -27,6 +27,8 @@ dependencies = [
     "msal>=1.26",
     # Filter config (email validation)
     "email-validator>=2.0",
+    # Agent config (YAML)
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]

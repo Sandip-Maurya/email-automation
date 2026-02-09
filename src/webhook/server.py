@@ -31,6 +31,7 @@ from src.webhook.models import ChangeNotificationBatch, ChangeNotification
 from src.orchestrator import process_trigger, _maybe_await
 from src.models.email import EmailThread, Email
 from src.utils.logger import get_logger
+from src.webhook.config_routes import router as config_router
 
 logger = get_logger("email_automation.webhook.server")
 
@@ -426,6 +427,8 @@ def create_app(
         )
         app.state.background_tasks = set()
         app.state.allowed_senders = load_allowed_senders()
+
+    app.include_router(config_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

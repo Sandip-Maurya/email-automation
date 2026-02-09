@@ -3,6 +3,7 @@
 from typing import Any
 
 from src.models.inputs import ProductAccessInput
+from src.triggers.registry import register_trigger
 from src.utils.csv_loader import load_customers
 from src.utils.logger import log_agent_step
 from src.utils.tracing import get_tracer
@@ -16,6 +17,7 @@ def _parse_bool(val: Any) -> bool:
     return False
 
 
+@register_trigger("access_api")
 async def access_api_fetch(inputs: ProductAccessInput) -> dict[str, Any]:
     """Mock fetch for Class of Trade, LDN, REMS status."""
     tracer = get_tracer()
