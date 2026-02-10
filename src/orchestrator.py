@@ -13,12 +13,17 @@ async def _maybe_await(value: T | asyncio.Future[T]) -> T:
         return await value
     return value
 
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from src.models.email import EmailThread
 from src.models.outputs import ProcessingResult, DraftEmail, FinalEmail, ReviewResult
 from src.agents.decision_agent import classify_thread
 from src.utils.tracing import get_tracer
+from src.utils.observability import (
+    thread_preview_for_observability,
+    span_attributes_for_workflow_step,
+    set_span_input_output,
+)
 
 if TYPE_CHECKING:
     from src.mail_provider.protocol import MailProvider
@@ -35,9 +40,135 @@ from src.agents.review_agent import review_draft
 from src.agents.email_agent import format_final_email
 from src.triggers import get_trigger  # imports trigger modules so @register_trigger runs
 from src.utils.logger import get_logger, log_agent_step
-from src.utils.observability import thread_preview_for_observability
 
 logger = get_logger("email_automation.orchestrator")
+
+
+async def _step_classify(thread: EmailThread, tracer: Any) -> Any:
+    """Step: A0 classify thread -> scenario."""
+    thread_id = thread.thread_id
+    latest = thread.latest_email
+    original_subject = latest.subject if latest else ""
+    a0_attrs = {"agent.name": "A0", **span_attributes_for_workflow_step("CHAIN", input_summary={"thread_id": thread_id, "subject": original_subject})}
+    with tracer.start_as_current_span("A0_classify", kind=SpanKind.INTERNAL, attributes=a0_attrs) as a0_span:
+        decision = await classify_thread(thread)
+        set_span_input_output(a0_span, output_summary={"scenario": decision.scenario, "confidence": decision.confidence})
+    return decision
+
+
+async def _step_extract(thread: EmailThread, scenario: str, scenario_cfg: dict, tracer: Any) -> Any:
+    """Step: input extract -> inputs."""
+    input_agent_id = scenario_cfg["input_agent"]
+    extract_fn, _ = get_input_agent(input_agent_id)
+    extract_attrs = {
+        "agent.name": input_agent_id,
+        "workflow.scenario": scenario,
+        **span_attributes_for_workflow_step("TOOL", input_summary={"input_agent": input_agent_id, "scenario": scenario}),
+    }
+    with tracer.start_as_current_span("input_extract", kind=SpanKind.INTERNAL, attributes=extract_attrs) as extract_span:
+        inputs = await extract_fn(thread)
+        set_span_input_output(extract_span, output_summary={"confidence": inputs.confidence})
+    return inputs
+
+
+async def _step_trigger_fetch(inputs: Any, scenario: str, scenario_cfg: dict, tracer: Any) -> dict:
+    """Step: trigger fetch -> trigger_data."""
+    trigger_name = scenario_cfg["trigger"]
+    trigger_fn = get_trigger(trigger_name)
+    trigger_attrs = {
+        "trigger.type": trigger_name,
+        "workflow.scenario": scenario,
+        **span_attributes_for_workflow_step("TOOL", input_summary={"trigger": trigger_name, "scenario": scenario}),
+    }
+    with tracer.start_as_current_span("trigger_fetch", kind=SpanKind.INTERNAL, attributes=trigger_attrs) as trigger_span:
+        trigger_data = await trigger_fn(inputs)
+        set_span_input_output(trigger_span, output_summary={"source": trigger_data.get("source", "")})
+    return trigger_data
+
+
+async def _step_draft(
+    thread: EmailThread,
+    scenario: str,
+    scenario_cfg: dict,
+    inputs: Any,
+    trigger_data: dict,
+    tracer: Any,
+) -> Any:
+    """Step: draft agent -> draft."""
+    draft_agent_id = scenario_cfg["draft_agent"]
+    draft_agent = get_agent(draft_agent_id, DraftEmail)
+    template = get_user_prompt_template(draft_agent_id)
+    original_subject = thread.latest_email.subject if thread.latest_email else ""
+    draft_attrs = {
+        "agent.name": draft_agent_id,
+        "workflow.scenario": scenario,
+        **span_attributes_for_workflow_step("TOOL", input_summary={"draft_agent": draft_agent_id, "scenario": scenario}),
+    }
+    with tracer.start_as_current_span("draft", kind=SpanKind.INTERNAL, attributes=draft_attrs) as draft_span:
+        prompt = template.format(
+            original_subject=original_subject,
+            inputs=inputs,
+            trigger_data=trigger_data,
+        )
+        result = await draft_agent.run(prompt)
+        draft = result.output
+        draft.scenario = scenario
+        draft.metadata["trigger_source"] = trigger_data.get("source", "")
+        set_span_input_output(draft_span, output_summary={"scenario": scenario, "trigger_source": draft.metadata.get("trigger_source", "")})
+    return draft
+
+
+async def _step_review(draft: Any, context_for_review: dict, scenario: str, tracer: Any) -> ReviewResult:
+    """Step: A10 review -> review."""
+    a10_attrs = {
+        "agent.name": "A10",
+        **span_attributes_for_workflow_step("CHAIN", input_summary={"scenario": scenario}),
+    }
+    with tracer.start_as_current_span("A10_review", kind=SpanKind.INTERNAL, attributes=a10_attrs) as a10_span:
+        review = await review_draft(draft, context_for_review)
+        set_span_input_output(a10_span, output_summary={"status": review.status, "scenario": scenario})
+    return review
+
+
+async def _step_format(
+    draft: Any,
+    review: ReviewResult,
+    original_sender: str,
+    original_sender_name: str,
+    scenario: str,
+    tracer: Any,
+) -> FinalEmail:
+    """Step: A11 format -> final_email."""
+    a11_attrs = {
+        "agent.name": "A11",
+        **span_attributes_for_workflow_step("CHAIN", input_summary={"scenario": scenario}),
+    }
+    with tracer.start_as_current_span("A11_format", kind=SpanKind.INTERNAL, attributes=a11_attrs) as a11_span:
+        final_email = await format_final_email(
+            draft, review, reply_to=original_sender, sender_name=original_sender_name
+        )
+        set_span_input_output(a11_span, output_summary={"subject": final_email.subject, "scenario": scenario})
+    return final_email
+
+
+async def _step_reply(
+    provider: "MailProvider",
+    reply_to_message_id: str,
+    final_email: FinalEmail,
+    user_id: str | None,
+    tracer: Any,
+) -> Any:
+    """Step: reply via provider -> sent message info (or None)."""
+    reply_attrs = {
+        "provider": type(provider).__name__,
+        "workflow.reply_to_message_id": reply_to_message_id,
+        **span_attributes_for_workflow_step("TOOL", input_summary={"reply_to_message_id": reply_to_message_id}),
+    }
+    with tracer.start_as_current_span("reply_to_message", kind=SpanKind.INTERNAL, attributes=reply_attrs) as reply_span:
+        reply_body = final_email.body or ""
+        sent_msg = await _maybe_await(provider.reply_to_message(reply_to_message_id, reply_body, user_id=user_id))
+        set_span_input_output(reply_span, output_summary={"sent_message_id": sent_msg.id})
+    return sent_msg
 
 
 async def process_trigger(
@@ -54,15 +185,25 @@ async def process_trigger(
     log = logger.bind(message_id=message_id, conversation_id=conversation_id)
     log.info("process_trigger.start")
 
+    root_attrs = {
+        "workflow.message_id": message_id or "",
+        "workflow.conversation_id": conversation_id or "",
+        **span_attributes_for_workflow_step(
+            "CHAIN",
+            input_summary={"message_id": message_id or "", "conversation_id": conversation_id or ""},
+        ),
+    }
     with tracer.start_as_current_span(
         "process_trigger",
-        attributes={
-            "workflow.message_id": message_id or "",
-            "workflow.conversation_id": conversation_id or "",
-        },
+        kind=SpanKind.SERVER,
+        attributes=root_attrs,
     ) as root_span:
         try:
-            with tracer.start_as_current_span("fetch_thread"):
+            with tracer.start_as_current_span(
+                "fetch_thread",
+                kind=SpanKind.INTERNAL,
+                attributes=span_attributes_for_workflow_step("TOOL", input_summary={"message_id": message_id or "", "conversation_id": conversation_id or ""}),
+            ):
                 if message_id:
                     msg = await _maybe_await(provider.get_message(message_id, user_id=user_id))
                     if msg is None:
@@ -104,6 +245,10 @@ async def process_trigger(
                 user_id=user_id,
             )
             root_span.set_attribute("workflow.scenario", result.scenario)
+            set_span_input_output(
+                root_span,
+                output_summary={"scenario": result.scenario, "thread_id": result.thread_id},
+            )
 
             duration_ms = (perf_counter() - start) * 1000
             log.info(
@@ -143,66 +288,26 @@ async def process_email_thread(
     log = logger.bind(thread_id=thread_id, provider=bool(provider))
     log.info("process_email_thread.start", original_sender=original_sender, original_subject=original_subject)
 
-    # 1. Decision Agent A0
-    with tracer.start_as_current_span("A0_classify", attributes={"agent.name": "A0"}):
-        decision = await classify_thread(thread)
+    decision = await _step_classify(thread, tracer)
     scenario = decision.scenario
     log = log.bind(scenario=scenario)
     log.debug("process_email_thread.scenario", confidence=decision.confidence)
 
-    # 2. Load scenario config and run input -> trigger -> draft (generic dispatch)
     scenario_cfg = get_scenario_config(scenario)
     if not scenario_cfg.get("enabled", True):
         raise ValueError(f"Scenario {scenario} is disabled in config")
 
-    input_agent_id = scenario_cfg["input_agent"]
-    extract_fn, _ = get_input_agent(input_agent_id)
-    with tracer.start_as_current_span(
-        "input_extract",
-        attributes={"agent.name": input_agent_id, "workflow.scenario": scenario},
-    ):
-        inputs = await extract_fn(thread)
-
+    inputs = await _step_extract(thread, scenario, scenario_cfg, tracer)
     threshold = scenario_cfg.get("low_confidence_threshold", 0.5)
-    if inputs.confidence < threshold and getattr(inputs, "missing_fields", None):
-        log_agent_step("Orchestrator", "Low confidence / missing data -> flag for human", {"missing": inputs.missing_fields})
+    if inputs.confidence < threshold:
+        log_agent_step("Orchestrator", "Low confidence -> flag for human", {"confidence": inputs.confidence})
 
-    trigger_name = scenario_cfg["trigger"]
-    trigger_fn = get_trigger(trigger_name)
-    with tracer.start_as_current_span(
-        "trigger_fetch",
-        attributes={"trigger.type": trigger_name, "workflow.scenario": scenario},
-    ):
-        trigger_data = await trigger_fn(inputs)
-
-    draft_agent_id = scenario_cfg["draft_agent"]
-    draft_agent = get_agent(draft_agent_id, DraftEmail)
-    template = get_user_prompt_template(draft_agent_id)
-    with tracer.start_as_current_span(
-        "draft",
-        attributes={"agent.name": draft_agent_id, "workflow.scenario": scenario},
-    ):
-        prompt = template.format(
-            original_subject=original_subject,
-            inputs=inputs,
-            trigger_data=trigger_data,
-        )
-        result = await draft_agent.run(prompt)
-        draft = result.output
-        draft.scenario = scenario
-        draft.metadata["trigger_source"] = trigger_data.get("source", "")
-
+    trigger_data = await _step_trigger_fetch(inputs, scenario, scenario_cfg, tracer)
+    draft = await _step_draft(thread, scenario, scenario_cfg, inputs, trigger_data, tracer)
     context_for_review = {"inputs": inputs, "trigger_data": trigger_data}
 
-    # 3. Review Agent A10
-    with tracer.start_as_current_span("A10_review", attributes={"agent.name": "A10"}):
-        review: ReviewResult = await review_draft(draft, context_for_review)
-
-    # 4. Email Agent A11
-    with tracer.start_as_current_span("A11_format", attributes={"agent.name": "A11"}):
-        final_email: FinalEmail = await format_final_email(
-            draft, review, reply_to=original_sender, sender_name=original_sender_name
-        )
+    review = await _step_review(draft, context_for_review, scenario, tracer)
+    final_email = await _step_format(draft, review, original_sender, original_sender_name, scenario, tracer)
 
     raw_data: dict = {
         "decision_reasoning": decision.reasoning,
@@ -211,20 +316,12 @@ async def process_email_thread(
         "conversation_id": thread_id,
     }
 
-    # 5. Reply via provider (if provided and we have a message to reply to) and record sent outcome
     if provider is not None and reply_to_message_id:
-        with tracer.start_as_current_span(
-            "reply_to_message",
-            attributes={"provider": type(provider).__name__, "workflow.reply_to_message_id": reply_to_message_id},
-        ):
-            reply_body = final_email.body or ""
-            log.debug("process_email_thread.reply_attempt", reply_to_message_id=reply_to_message_id)
-            sent_msg = await _maybe_await(
-                provider.reply_to_message(reply_to_message_id, reply_body, user_id=user_id)
-            )
-            raw_data["sent_message_id"] = sent_msg.id
-            raw_data["sent_at"] = sent_msg.receivedDateTime
-            log.info("process_email_thread.reply_complete", sent_message_id=sent_msg.id)
+        log.debug("process_email_thread.reply_attempt", reply_to_message_id=reply_to_message_id)
+        sent_msg = await _step_reply(provider, reply_to_message_id, final_email, user_id, tracer)
+        raw_data["sent_message_id"] = sent_msg.id
+        raw_data["sent_at"] = sent_msg.receivedDateTime
+        log.info("process_email_thread.reply_complete", sent_message_id=sent_msg.id)
     log.info(
         "process_email_thread.complete",
         review_status=review.status,

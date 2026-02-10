@@ -23,7 +23,7 @@ async def extract_supply(thread: EmailThread) -> ProductSupplyInput:
     agent = get_agent("A1_supply_extract", ProductSupplyInput)
     result = await agent.run(_thread_prompt(thread))
     out = result.output
-    log_agent_step("A1", "Extracted", {"confidence": out.confidence, "missing": out.missing_fields})
+    log_agent_step("A1", "Extracted", {"confidence": out.confidence})
     return out
 
 
@@ -33,7 +33,7 @@ async def extract_access(thread: EmailThread) -> ProductAccessInput:
     agent = get_agent("A2_access_extract", ProductAccessInput)
     result = await agent.run(_thread_prompt(thread))
     out = result.output
-    log_agent_step("A2", "Extracted", {"confidence": out.confidence, "missing": out.missing_fields})
+    log_agent_step("A2", "Extracted", {"confidence": out.confidence})
     return out
 
 
@@ -43,7 +43,7 @@ async def extract_allocation(thread: EmailThread) -> ProductAllocationInput:
     agent = get_agent("A3_allocation_extract", ProductAllocationInput)
     result = await agent.run(_thread_prompt(thread))
     out = result.output
-    log_agent_step("A3", "Extracted", {"confidence": out.confidence, "missing": out.missing_fields})
+    log_agent_step("A3", "Extracted", {"confidence": out.confidence})
     return out
 
 

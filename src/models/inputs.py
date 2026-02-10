@@ -12,7 +12,6 @@ class ProductSupplyInput(BaseModel):
     distributor: Optional[str] = None
     ndc: Optional[str] = None
     confidence: float
-    missing_fields: list[str] = []
 
 
 class ProductAccessInput(BaseModel):
@@ -26,7 +25,6 @@ class ProductAccessInput(BaseModel):
     is_340b: Optional[bool] = None
     contact: Optional[str] = None
     confidence: float
-    missing_fields: list[str] = []
 
 
 class ProductAllocationInput(BaseModel):
@@ -38,7 +36,6 @@ class ProductAllocationInput(BaseModel):
     distributor: Optional[str] = None
     ndc: Optional[str] = None
     confidence: float
-    missing_fields: list[str] = []
 
 
 class CatchAllInput(BaseModel):
@@ -47,4 +44,3 @@ class CatchAllInput(BaseModel):
     topics: list[str] = []
     question_summary: Optional[str] = None
     confidence: float
-    missing_fields: list[str] = []

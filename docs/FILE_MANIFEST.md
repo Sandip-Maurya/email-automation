@@ -232,10 +232,10 @@ email-automation/
 | `EmailThread` | Thread of emails: thread_id, emails list, latest_email. |
 | **inputs.py** | Pydantic models for scenario-specific extracted inputs. |
 | **Classes** | |
-| `ProductSupplyInput` | S1: location, distributor, ndc, confidence, missing_fields. |
-| `ProductAccessInput` | S2: customer, distributor, ndc, dea_number, address, is_340b, contact, confidence, missing_fields. |
-| `ProductAllocationInput` | S3: urgency, year_start, year_end, distributor, ndc, confidence, missing_fields. |
-| `CatchAllInput` | S4: topics, question_summary, confidence, missing_fields. |
+| `ProductSupplyInput` | S1: location, distributor, ndc, confidence. |
+| `ProductAccessInput` | S2: customer, distributor, ndc, dea_number, address, is_340b, contact, confidence. |
+| `ProductAllocationInput` | S3: urgency, year_start, year_end, distributor, ndc, confidence. |
+| `CatchAllInput` | S4: topics, question_summary, confidence. |
 | **outputs.py** | Pydantic models for agent outputs and end-to-end result. |
 | **Classes** | |
 | `ScenarioDecision` | A0 output: scenario (S1–S4), confidence, reasoning. |

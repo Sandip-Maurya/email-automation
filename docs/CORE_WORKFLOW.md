@@ -55,7 +55,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
 
 **Shared behavior**
 
-- **Low confidence / missing fields**: If the input agent returns confidence &lt; 0.5 and `missing_fields` is non-empty, the orchestrator logs a step "Low confidence / missing data -> flag for human" (review agent can still approve or flag).
+- **Low confidence**: If the input agent returns confidence &lt; threshold (default 0.5), the orchestrator logs a step "Low confidence -> flag for human" (review agent can still approve or flag).
 - **Context for review**: Each branch builds `context_for_review = {"inputs": inputs, "trigger_data": trigger_data}` and passes it to A10.
 - **Result**: `ProcessingResult` contains thread_id, scenario, decision_confidence, draft, review, final_email, and raw_data (including sent_message_id/sent_at when a reply was sent).
 
@@ -73,7 +73,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
        v
   +---------+
   | A1      |  extract_supply(thread) -> ProductSupplyInput
-  | Extract |  location, distributor, ndc, confidence, missing_fields
+  | Extract |  location, distributor, ndc, confidence
   +----+----+
        |
        v
@@ -97,7 +97,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
 
 | Step        | What happens |
 |------------|----------------|
-| **Input (A1)** | `ProductSupplyInput`: optional `location`, `distributor`, `ndc`; `confidence` (0–1); `missing_fields` list. |
+| **Input (A1)** | `ProductSupplyInput`: optional `location`, `distributor`, `ndc`; `confidence` (0–1). |
 | **Trigger**    | `inventory_api_fetch(inputs)`: reads inventory CSV, filters rows by NDC (substring), distributor (substring), location (substring); returns `records` (list of InventoryRecord dicts) and `total_quantity_available`. |
 | **Draft (A7)** | `draft_supply_or_access("S1", inputs, trigger_data, original_subject)`: produces draft subject and body for a supply/inventory reply using extracted inputs and API result. |
 | **After draft**| Same as all scenarios: A10 review → A11 format → send if provider and reply_to_message_id are set. |
@@ -117,7 +117,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
   +---------+
   | A2      |  extract_access(thread) -> ProductAccessInput
   | Extract |  customer, distributor, ndc, dea_number, address, is_340b, contact,
-  |         |  confidence, missing_fields
+  |         |  confidence
   +----+----+
        |
        v
@@ -141,7 +141,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
 
 | Step        | What happens |
 |------------|----------------|
-| **Input (A2)** | `ProductAccessInput`: optional `customer`, `distributor`, `ndc`, `dea_number`, `address`, `is_340b`, `contact`; `confidence`; `missing_fields`. |
+| **Input (A2)** | `ProductAccessInput`: optional `customer`, `distributor`, `ndc`, `dea_number`, `address`, `is_340b`, `contact`; `confidence`. |
 | **Trigger**    | `access_api_fetch(inputs)`: loads customers CSV; finds first row where DEA matches or customer name contains input; returns `class_of_trade`, `rems_certified`, `is_340b`, optional `address`/`customer_id`, and `source`. If no match, returns defaults (e.g. class_of_trade "Unknown", rems_certified False). |
 | **Draft (A7)** | `draft_supply_or_access("S2", inputs, trigger_data, original_subject)`: drafts reply for access/REMS/340B using inputs and API result. |
 | **After draft**| A10 → A11 → send (same as all scenarios). |
@@ -160,7 +160,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
        v
   +---------+
   | A3      |  extract_allocation(thread) -> ProductAllocationInput
-  | Extract |  urgency, year_start, year_end, distributor, ndc, confidence, missing_fields
+  | Extract |  urgency, year_start, year_end, distributor, ndc, confidence
   +----+----+
        |
        v
@@ -185,7 +185,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
 
 | Step        | What happens |
 |------------|----------------|
-| **Input (A3)** | `ProductAllocationInput`: optional `urgency`, `year_start`, `year_end`, `distributor`, `ndc`; `confidence`; `missing_fields`. |
+| **Input (A3)** | `ProductAllocationInput`: optional `urgency`, `year_start`, `year_end`, `distributor`, `ndc`; `confidence`. |
 | **Trigger**    | `allocation_api_simulate(inputs)`: loads allocations CSV; filters by NDC (substring), distributor (substring), and year in [year_start, year_end] (defaults 2025); returns `allocation_records`, `total_quantity_allocated`, `total_quantity_used`, year range, `source`, and a `spec_buy_note`. |
 | **Draft (A8)** | `draft_allocation_or_catchall("S3", inputs, trigger_data, original_subject)`: drafts reply for allocation using inputs and API result. |
 | **After draft**| A10 → A11 → send (same as all scenarios). |
@@ -204,7 +204,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
        v
   +---------+
   | A4      |  extract_catchall(thread) -> CatchAllInput
-  | Extract |  topics[], question_summary, confidence, missing_fields
+  | Extract |  topics[], question_summary, confidence
   +----+----+
        |
        v
@@ -228,7 +228,7 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
 
 | Step        | What happens |
 |------------|----------------|
-| **Input (A4)** | `CatchAllInput`: `topics` (list of strings), optional `question_summary`; `confidence`; `missing_fields`. |
+| **Input (A4)** | `CatchAllInput`: `topics` (list of strings), optional `question_summary`; `confidence`. |
 | **Trigger**    | `rag_search_find_similar(inputs)`: loads past_emails CSV; keeps rows where any topic appears in topic/subject/body or question_summary appears in subject/body; returns `similar_emails` (list of {email_id, subject, body, topic}). If no matches, returns first 3 rows as fallback. |
 | **Draft (A8)** | `draft_allocation_or_catchall("S4", inputs, trigger_data, original_subject)`: drafts reply using extracted topics/summary and similar past emails. |
 | **After draft**| A10 → A11 → send (same as all scenarios). |

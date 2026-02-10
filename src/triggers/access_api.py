@@ -2,10 +2,13 @@
 
 from typing import Any
 
+from opentelemetry.trace import SpanKind
+
 from src.models.inputs import ProductAccessInput
 from src.triggers.registry import register_trigger
 from src.utils.csv_loader import load_customers
 from src.utils.logger import log_agent_step
+from src.utils.observability import span_attributes_for_workflow_step, set_span_input_output
 from src.utils.tracing import get_tracer
 
 
@@ -21,14 +24,15 @@ def _parse_bool(val: Any) -> bool:
 async def access_api_fetch(inputs: ProductAccessInput) -> dict[str, Any]:
     """Mock fetch for Class of Trade, LDN, REMS status."""
     tracer = get_tracer()
-    with tracer.start_as_current_span(
-        "access_api_call",
-        attributes={
-            "api.name": "access",
-            "api.dea_number": str(getattr(inputs, "dea_number", "") or ""),
-            "api.customer": str(getattr(inputs, "customer", "") or "")[:256],
-        },
-    ) as span:
+    dea_str = str(getattr(inputs, "dea_number", "") or "")
+    customer_str = str(getattr(inputs, "customer", "") or "")[:256]
+    attrs = {
+        "api.name": "access",
+        "api.dea_number": dea_str,
+        "api.customer": customer_str,
+        **span_attributes_for_workflow_step("TOOL", input_summary={"dea_number": dea_str}),
+    }
+    with tracer.start_as_current_span("access_api_call", kind=SpanKind.INTERNAL, attributes=attrs) as span:
         log_agent_step("Trigger", "Access API fetch (mock)", {"ndc": inputs.ndc, "dea": inputs.dea_number})
         rows = load_customers()
         dea = (inputs.dea_number or "").strip()
@@ -42,6 +46,7 @@ async def access_api_fetch(inputs: ProductAccessInput) -> dict[str, Any]:
                 break
         if not match:
             span.set_attribute("api.matched", False)
+            set_span_input_output(span, output_summary={"matched": False, "source": "mock_access_default"})
             log_agent_step("Trigger", "No customer match; returning mock defaults", {})
             return {
                 "class_of_trade": "Unknown",
@@ -51,6 +56,7 @@ async def access_api_fetch(inputs: ProductAccessInput) -> dict[str, Any]:
             }
         span.set_attribute("api.matched", True)
         span.set_attribute("api.customer_id", str(match.get("customer_id", "")))
+        set_span_input_output(span, output_summary={"matched": True, "customer_id": match.get("customer_id"), "source": "mock_access_api"})
         log_agent_step("Trigger", "Customer match found", {"customer_id": match.get("customer_id")})
         return {
             "class_of_trade": match.get("class_of_trade", "Unknown"),

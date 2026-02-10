@@ -31,7 +31,10 @@ from src.webhook.models import ChangeNotificationBatch, ChangeNotification
 from src.orchestrator import process_trigger, _maybe_await
 from src.models.email import EmailThread, Email
 from src.utils.logger import get_logger
+from src.utils.observability import span_attributes_for_workflow_step, set_span_input_output
+from src.utils.tracing import get_tracer, shutdown_tracing
 from src.webhook.config_routes import router as config_router
+from opentelemetry.trace import SpanKind
 
 logger = get_logger("email_automation.webhook.server")
 
@@ -328,6 +331,7 @@ def _setup_provider(
 
 async def _shutdown_tasks(app: FastAPI) -> None:
     """Cancel workers and other tasks, close Graph HTTP client, then wait for tasks to finish."""
+    shutdown_tracing()
     shutdown_timeout = 10.0
     all_tasks: list[asyncio.Task[Any]] = []
 
@@ -529,58 +533,73 @@ def create_app(
             logger.error("webhook.notifications.no_provider")
             return Response(status_code=503, content="Provider not configured")
 
-        dedup: DedupStore | None = getattr(app.state, "dedup_store", None)
-        client_state = (WEBHOOK_CLIENT_STATE or "").strip()
+        batch_size = len(batch.value)
+        subscription_id = batch.value[0].subscription_id if batch.value else None
+        root_attrs = {
+            **span_attributes_for_workflow_step(
+                "CHAIN",
+                input_summary={"batch_size": batch_size, "subscription_id": subscription_id},
+            ),
+        }
+        tracer = get_tracer()
+        with tracer.start_as_current_span(
+            "webhook.receive",
+            kind=SpanKind.SERVER,
+            attributes=root_attrs,
+        ) as root_span:
+            dedup: DedupStore | None = getattr(app.state, "dedup_store", None)
+            client_state = (WEBHOOK_CLIENT_STATE or "").strip()
 
-        # Fast path: parse resource (and fallback resourceData.id) per Graph docs; collect (message_id, user_id).
-        candidates: list[tuple[str, str | None]] = []
-        for notification in batch.value:
-            if client_state and notification.client_state != client_state:
-                logger.warning(
-                    "webhook.notifications.client_state_mismatch",
-                    subscription_id=notification.subscription_id,
-                )
-                continue
-            if notification.change_type != "created":
-                logger.debug(
-                    "webhook.notifications.skip_change_type",
-                    change_type=notification.change_type,
-                    message_id=notification.resource_data.id if notification.resource_data else None,
-                )
-                continue
-            message_id, user_id = _parse_notification_resource(notification)
-            if not message_id:
-                logger.debug(
-                    "webhook.notifications.no_resource_data",
-                    change_type=notification.change_type,
-                    resource=notification.resource,
-                )
-                continue
-            if dedup is not None and await dedup.is_processing(message_id):
-                logger.debug("webhook.notifications.dedup_in_flight", message_id=message_id)
-                continue
-            if dedup is not None and await dedup.has_failed(message_id):
-                logger.debug("webhook.notifications.skip_already_failed", message_id=message_id)
-                continue
-            if dedup is not None and await dedup.has_triggered(message_id):
-                logger.debug("webhook.notifications.skip_already_triggered", message_id=message_id)
-                continue
-            candidates.append((message_id, user_id))
+            # Fast path: parse resource (and fallback resourceData.id) per Graph docs; collect (message_id, user_id).
+            candidates: list[tuple[str, str | None]] = []
+            for notification in batch.value:
+                if client_state and notification.client_state != client_state:
+                    logger.warning(
+                        "webhook.notifications.client_state_mismatch",
+                        subscription_id=notification.subscription_id,
+                    )
+                    continue
+                if notification.change_type != "created":
+                    logger.debug(
+                        "webhook.notifications.skip_change_type",
+                        change_type=notification.change_type,
+                        message_id=notification.resource_data.id if notification.resource_data else None,
+                    )
+                    continue
+                message_id, user_id = _parse_notification_resource(notification)
+                if not message_id:
+                    logger.debug(
+                        "webhook.notifications.no_resource_data",
+                        change_type=notification.change_type,
+                        resource=notification.resource,
+                    )
+                    continue
+                if dedup is not None and await dedup.is_processing(message_id):
+                    logger.debug("webhook.notifications.dedup_in_flight", message_id=message_id)
+                    continue
+                if dedup is not None and await dedup.has_failed(message_id):
+                    logger.debug("webhook.notifications.skip_already_failed", message_id=message_id)
+                    continue
+                if dedup is not None and await dedup.has_triggered(message_id):
+                    logger.debug("webhook.notifications.skip_already_triggered", message_id=message_id)
+                    continue
+                candidates.append((message_id, user_id))
 
-        # Enqueue candidates for worker pool; backpressure if queue full
-        queue = getattr(app.state, "notification_queue", None)
-        if queue is not None and candidates:
+            # Enqueue candidates for worker pool; backpressure if queue full
+            queue = getattr(app.state, "notification_queue", None)
             enqueued = 0
-            for item in candidates:
-                await queue.put(item)
-                enqueued += 1
-            qsize = queue.qsize()
-            logger.info(
-                "webhook.notifications.enqueued",
-                enqueued=enqueued,
-                queue_size=qsize,
-                queue_max=WEBHOOK_QUEUE_MAX,
-            )
+            if queue is not None and candidates:
+                for item in candidates:
+                    await queue.put(item)
+                    enqueued += 1
+                qsize = queue.qsize()
+                logger.info(
+                    "webhook.notifications.enqueued",
+                    enqueued=enqueued,
+                    queue_size=qsize,
+                    queue_max=WEBHOOK_QUEUE_MAX,
+                )
+            set_span_input_output(root_span, output_summary={"enqueued": enqueued, "candidates": len(candidates)})
 
         return Response(status_code=202, content='{"status":"accepted"}', media_type="application/json")
 

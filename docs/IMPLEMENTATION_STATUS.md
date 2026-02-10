@@ -261,6 +261,20 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 - `PHOENIX_PROJECT_NAME`: Project identifier
 - `PHOENIX_API_KEY`: Authentication for cloud endpoint
 - `PHOENIX_PROTOCOL`: Auto-detected or explicit (`http/protobuf`, `grpc`)
+- `DEPLOYMENT_ENVIRONMENT`: Resource attribute (e.g. `development`, `staging`, `production`); default `development`
+- `TRACE_DROP_CHILDREN_OF_SPANS`: Comma-separated span names whose descendant spans are dropped from traces (default `fetch_thread,reply_to_message`); set empty to disable filtering.
+
+**Tracing pipeline** (`src/utils/tracing.py`):
+- Explicit pipeline: OpenInferenceSpanProcessor runs before export so spans have OpenInference attributes (kind, input/output) before being sent to Phoenix. DropDescendantsFilterProcessor wraps BatchSpanProcessor and drops descendant spans of configured boundary names (e.g. fetch_thread, reply_to_message) so Phoenix shows only top-level workflow spans.
+- Resource includes `service.name`, `service.version`, `deployment.environment`, and Phoenix project name.
+- Pydantic AI agents use `InstrumentationSettings(version=2)`; OpenInference instrumentor enriches LLM spans.
+- `shutdown_tracing()` is called on CLI exit (`main.py`) and in webhook lifespan shutdown to flush and shut down the provider.
+
+**Phoenix-friendly attributes**:
+- Root and step spans set OpenInference span kind (CHAIN, TOOL, AGENT) and OTel SpanKind (SERVER/INTERNAL).
+- Input/output are set via `span_attributes_for_workflow_step` and `set_span_input_output` (`src/utils/observability.py`) so Phoenix shows kind and input/output columns; payloads are PII-safe summaries (ids, scenario, counts).
+- Webhook: root span `webhook.receive` wraps the notifications POST with input (batch_size, subscription_id) and output (enqueued, candidates).
+- Orchestrator pipeline is implemented as step functions (`_step_classify`, `_step_extract`, etc.) for a linear flow with reduced nesting.
 
 **Traced Operations**:
 | Span Name | Attributes | Description |
@@ -274,6 +288,8 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 | `A10_review` | agent.name | Review agent quality check |
 | `A11_format` | agent.name | Final email formatting |
 | `send_email` | provider | Email send operation |
+| `webhook.receive` | batch_size, subscription_id, enqueued | Webhook notifications POST root span |
+| `graph_workflow` | sender, thread_id, scenario | Graph mode root span |
 
 ---
 
@@ -357,6 +373,7 @@ The `scripts/verify_graph_credentials.py` script provides:
 | `PHOENIX_COLLECTOR_ENDPOINT` | No | `http://localhost:6006/v1/traces` | Phoenix endpoint |
 | `PHOENIX_PROJECT_NAME` | No | `email-automation` | Project name in Phoenix |
 | `PHOENIX_API_KEY` | No | - | Phoenix cloud authentication |
+| `DEPLOYMENT_ENVIRONMENT` | No | `development` | OTel Resource attribute (e.g. staging, production) |
 | `AZURE_TENANT_ID` | For Graph | - | Azure AD tenant ID |
 | `AZURE_CLIENT_ID` | For Graph | - | Azure app client ID |
 | `AZURE_CLIENT_SECRET` | For Graph | - | Azure app client secret |

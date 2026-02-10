@@ -31,33 +31,29 @@ agents:
     system_prompt: 'You are Input Agent A1 for Product Supply (S1).
 
       Extract from the email thread: location, distributor, NDC (National Drug Code).
+      You may infer values from context. Leave any field null if not mentioned or inferable.
 
-      If a field is not mentioned, leave it null and add it to missing_fields.
-
-      Set confidence between 0 and 1. List any missing_fields that would be needed
-      for a full supply inquiry.
+      Set confidence between 0 and 1.
 
       '
   A2_access_extract:
     system_prompt: 'You are Input Agent A2 for Product Access (S2).
 
       Extract from the email: customer, distributor, NDC, DEA number, address, 340B
-      status (true/false), contact.
+      status (true/false), contact. You may infer values from context. Leave any
+      field null if not mentioned or inferable.
 
-      If a field is not mentioned, leave it null and add it to missing_fields.
-
-      Set confidence between 0 and 1. List missing_fields.
+      Set confidence between 0 and 1.
 
       '
   A3_allocation_extract:
     system_prompt: 'You are Input Agent A3 for Product Allocation (S3).
 
       Extract from the email: urgency, year range (year_start, year_end), distributor,
-      NDC.
+      NDC. You may infer values from context. Leave any field null if not mentioned
+      or inferable.
 
-      If a field is not mentioned, leave it null and add it to missing_fields.
-
-      Set confidence between 0 and 1. List missing_fields.
+      Set confidence between 0 and 1.
 
       '
   A4_catchall_extract:
@@ -66,8 +62,7 @@ agents:
       Extract key topics and a brief question_summary from the email for RAG search
       over past similar emails.
 
-      Set confidence between 0 and 1. missing_fields can list any clarifying info
-      that would help.
+      Set confidence between 0 and 1.
 
       '
   A7_draft:

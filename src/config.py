@@ -39,6 +39,15 @@ PHOENIX_COLLECTOR_ENDPOINT = os.getenv(
 PHOENIX_PROJECT_NAME = os.getenv("PHOENIX_PROJECT_NAME", "email-automation")
 PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
 PHOENIX_PROTOCOL = os.getenv("PHOENIX_PROTOCOL", "").lower() or None  # "http/protobuf" | "grpc" | None=infer
+# Resource attribute for Phoenix/OTel (e.g. "development", "staging", "production")
+DEPLOYMENT_ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "development")
+# Span names whose descendant spans are dropped from traces (comma-separated); empty = no filtering.
+_raw_drop_children = os.getenv("TRACE_DROP_CHILDREN_OF_SPANS", "fetch_thread,reply_to_message").strip()
+TRACE_DROP_CHILDREN_OF_SPANS: frozenset[str] = (
+    frozenset(s.strip() for s in _raw_drop_children.split(",") if s.strip())
+    if _raw_drop_children
+    else frozenset()
+)
 
 # Graph API (for real provider)
 TARGET_SENDER = os.getenv("TARGET_SENDER", "")

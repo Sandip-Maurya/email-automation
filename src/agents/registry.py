@@ -5,10 +5,13 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic_ai import Agent
+from pydantic_ai import Agent, InstrumentationSettings
 
 from src.config import PROJECT_ROOT
 from src.utils.logger import get_logger
+
+# OpenInference/Phoenix: use version=2 so spans have schema OpenInferenceSpanProcessor expects
+_PYDANTIC_AI_INSTRUMENTATION = InstrumentationSettings(version=2)
 
 logger = get_logger("email_automation.agents.registry")
 
@@ -108,6 +111,7 @@ def get_agent(agent_id: str, output_type: type) -> Agent:
         output_type=output_type,
         system_prompt=system_prompt,
         retries=retries,
+        instrument=_PYDANTIC_AI_INSTRUMENTATION,
         **({"model_settings": model_settings} if model_settings else {}),
     )
     _agent_cache[agent_id] = agent

@@ -4,7 +4,7 @@ import asyncio
 import os
 
 import typer
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from src.config import TARGET_SENDER
 from src.mail_provider.graph_real import GraphProvider
@@ -12,7 +12,7 @@ from src.mail_provider.mapping import graph_messages_to_thread
 from src.orchestrator import process_email_thread
 from src.utils.logger import bind_context, clear_context
 from src.utils.tracing import get_tracer
-from src.utils.observability import thread_preview_for_observability
+from src.utils.observability import thread_preview_for_observability, span_attributes_for_workflow_step, set_span_input_output
 
 from .shared import (
     append_csv_log_row,
@@ -59,22 +59,27 @@ def graph(
     async def _run_graph_flow():
         """Single async flow: one trace (graph_workflow) with fetch, process, optional send."""
         tracer = get_tracer()
+        root_attrs = {
+            "workflow.mode": "graph",
+            "workflow.sender": effective_sender,
+            **span_attributes_for_workflow_step("CHAIN", input_summary={"sender": effective_sender}),
+        }
         with tracer.start_as_current_span(
             "graph_workflow",
-            attributes={
-                "workflow.mode": "graph",
-                "workflow.sender": effective_sender,
-            },
+            kind=SpanKind.INTERNAL,
+            attributes=root_attrs,
         ) as root_span:
             try:
-                with tracer.start_as_current_span(
-                    "fetch_email",
-                    attributes={"workflow.sender": effective_sender},
-                ):
+                fetch_attrs = {
+                    "workflow.sender": effective_sender,
+                    **span_attributes_for_workflow_step("TOOL", input_summary={"sender": effective_sender}),
+                }
+                with tracer.start_as_current_span("fetch_email", kind=SpanKind.INTERNAL, attributes=fetch_attrs) as fetch_span:
                     msg = await provider.get_latest_from_sender(effective_sender)
                     if not msg:
                         raise ValueError(f"No message found from sender: {effective_sender}")
                     thread = graph_messages_to_thread([msg])
+                    set_span_input_output(fetch_span, output_summary={"thread_id": thread.thread_id, "message_id": msg.id})
 
                 root_span.set_attribute("workflow.thread_id", thread.thread_id)
                 root_span.set_attribute("workflow.message_id", msg.id)
@@ -83,6 +88,7 @@ def graph(
                 bind_context(command="graph", sender=effective_sender, message_id=msg.id)
                 result = await process_email_thread(thread, provider=None, tracer=tracer)
                 root_span.set_attribute("workflow.scenario", result.scenario)
+                set_span_input_output(root_span, output_summary={"thread_id": result.thread_id, "scenario": result.scenario})
 
                 loop = asyncio.get_running_loop()
                 confirm = await loop.run_in_executor(None, lambda: _show_draft_and_confirm(result))
@@ -90,15 +96,15 @@ def graph(
                     return result, False
 
                 reply_body = result.final_email.body or ""
-                with tracer.start_as_current_span(
-                    "reply_to_message",
-                    attributes={
-                        "workflow.message_id": msg.id,
-                        "workflow.conversation_id": result.thread_id,
-                        "provider": type(provider).__name__,
-                    },
-                ):
+                reply_attrs = {
+                    "workflow.message_id": msg.id,
+                    "workflow.conversation_id": result.thread_id,
+                    "provider": type(provider).__name__,
+                    **span_attributes_for_workflow_step("TOOL", input_summary={"message_id": msg.id, "thread_id": result.thread_id}),
+                }
+                with tracer.start_as_current_span("reply_to_message", kind=SpanKind.INTERNAL, attributes=reply_attrs) as reply_span:
                     await provider.reply_to_message(msg.id, reply_body)
+                    set_span_input_output(reply_span, output_summary={"sent": True})
                 return result, True
             except Exception as e:
                 root_span.set_status(Status(StatusCode.ERROR, str(e)))

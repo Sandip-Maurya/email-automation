@@ -2,11 +2,14 @@
 
 from typing import Any
 
+from opentelemetry.trace import SpanKind
+
 from src.models.inputs import ProductSupplyInput
 from src.models.data import InventoryRecord
 from src.triggers.registry import register_trigger
 from src.utils.csv_loader import load_inventory
 from src.utils.logger import log_agent_step
+from src.utils.observability import span_attributes_for_workflow_step, set_span_input_output
 from src.utils.tracing import get_tracer
 
 
@@ -34,14 +37,14 @@ async def inventory_api_fetch(inputs: ProductSupplyInput) -> dict[str, Any]:
     """Mock fetch from 852 (CDP/Azure) and Value Track (IQVIA), then calculate inventory."""
     tracer = get_tracer()
     ndc_str = str(getattr(inputs, "ndc", "") or "")
-    with tracer.start_as_current_span(
-        "inventory_api_call",
-        attributes={
-            "api.name": "inventory",
-            "api.ndc": ndc_str,
-            "api.distributor": str(getattr(inputs, "distributor", "") or ""),
-        },
-    ) as span:
+    dist_str = str(getattr(inputs, "distributor", "") or "")
+    attrs = {
+        "api.name": "inventory",
+        "api.ndc": ndc_str,
+        "api.distributor": dist_str,
+        **span_attributes_for_workflow_step("TOOL", input_summary={"ndc": ndc_str, "distributor": dist_str}),
+    }
+    with tracer.start_as_current_span("inventory_api_call", kind=SpanKind.INTERNAL, attributes=attrs) as span:
         log_agent_step("Trigger", "Inventory API fetch (mock)", {"ndc": inputs.ndc, "distributor": inputs.distributor})
         rows = load_inventory()
         records = _parse_inventory_rows(rows)
@@ -57,6 +60,7 @@ async def inventory_api_fetch(inputs: ProductSupplyInput) -> dict[str, Any]:
         total_qty = sum(r.quantity_available for r in matching)
         span.set_attribute("api.records_found", len(matching))
         span.set_attribute("api.total_quantity_available", total_qty)
+        set_span_input_output(span, output_summary={"records_found": len(matching), "total_quantity_available": total_qty})
         log_agent_step("Trigger", "Calculate inventory", {"matches": len(matching), "total_quantity": total_qty})
         return {
             "records": [r.model_dump() for r in matching],
