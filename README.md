@@ -260,6 +260,7 @@ email-automation/
 | [Azure Setup Guide](docs/AZURE_SETUP_GUIDE.md) | Complete Azure AD app registration walkthrough |
 | [Graph API Integration Guide](docs/GRAPH_API_INTEGRATION_GUIDE.md) | Python implementation guide for Graph email operations |
 | [Implementation Status](docs/IMPLEMENTATION_STATUS.md) | Feature status, architecture details, and roadmap |
+| [Pharma Terms Guide](docs/PHARMA_TERMS_GUIDE.md) | Plain-language guide to pharma trade terms (NDC, REMS, 340B, DEA, etc.) for non-technical users |
 
 ## Tech Stack
 

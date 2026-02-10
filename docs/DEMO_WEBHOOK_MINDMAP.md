@@ -97,10 +97,12 @@
 - **Trace path:** `webhook.receive` or `process_trigger` → `A0_classify` → `input_extract` → `trigger_fetch` → `draft` → `A11_aggregate` → `A10_review` → `A11_format` → `reply_to_message`
 - **Usefulness:** input/output and system prompt per agent, latency, token usage, full flow from retrieve thread to send
 
-## Sample one-liners (email body)
+## Sample emails
 
-| Scenario | Example phrase |
-|----------|----------------|
+**2–3 per scenario (Subject + Body):** [DEMO_SAMPLE_EMAILS.md](DEMO_SAMPLE_EMAILS.md) — for demo or to share with audience.
+
+| Scenario | One-liner |
+|----------|-----------|
 | S1 | Can you confirm inventory for NDC 12345 at Distributor A? |
 | S2 | What is our REMS status for product X? |
 | S3 | Request allocation for 2025, NDC 11111. |

@@ -81,6 +81,7 @@ email-automation/
 │   ├── CORE_WORKFLOW.md
 │   ├── DEMO_WEBHOOK_GUIDE.md
 │   ├── DEMO_WEBHOOK_MINDMAP.md
+│   ├── DEMO_SAMPLE_EMAILS.md
 │   ├── FILE_MANIFEST.md
 │   ├── GRAPH_API_INTEGRATION_GUIDE.md
 │   ├── IMPLEMENTATION_STATUS.md
@@ -191,6 +192,8 @@ email-automation/
 | **CORE_WORKFLOW.md** | Core workflow: high-level pipeline and per-scenario (S1–S4) flow with ASCII diagrams. |
 | **DEMO_WEBHOOK_GUIDE.md** | Detailed 15–20 min webhook demo guide: narrative script, expectations, live run (4 mails, 2+ routes, audience send), Phoenix, Graph/app registration, Q&A. |
 | **DEMO_WEBHOOK_MINDMAP.md** | One-page printable mind map for webhook demo: start order, flow, what to show, sample scenarios. |
+| **DEMO_SAMPLE_EMAILS.md** | 2–3 sample emails per scenario (S1–S4) in markdown (Subject + Body) for demo or to share with audience. |
+| **PHARMA_TERMS_GUIDE.md** | Plain-language guide for non-technical users: pharma trade terms (NDC, REMS, 340B, DEA, class of trade, allocation, etc.) and how they relate to the app’s read–understand–process–reply flow. |
 | **GRAPH_API_INTEGRATION_GUIDE.md** | Python Graph API integration: auth, read/send mail, models, error handling, examples. |
 | **IMPLEMENTATION_STATUS.md** | Feature completion status, architecture summary, roadmap, and limitations. |
 | **WEBHOOK_DEV_TUNNEL_SETUP.md** | Microsoft Dev Tunnel setup for local webhook development and subscription lifecycle. |

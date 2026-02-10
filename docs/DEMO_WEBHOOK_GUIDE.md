@@ -102,7 +102,9 @@ Run in this order so the webhook can create the subscription and receive notific
 
 ## 6. Sample email content (S1–S4)
 
-Use these as subject/body one-liners for predictable classification:
+**Full set (2–3 per scenario):** [DEMO_SAMPLE_EMAILS.md](DEMO_SAMPLE_EMAILS.md) — copy-paste ready Subject + Body for demo or to share with the audience.
+
+Quick reference (one per scenario):
 
 | Scenario | Intent | Example subject / body phrase |
 |----------|--------|------------------------------|
