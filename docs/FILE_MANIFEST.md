@@ -79,6 +79,8 @@ email-automation/
 │   ├── component_diagram.jpg
 │   ├── FILTER_CONFIG.md
 │   ├── CORE_WORKFLOW.md
+│   ├── DEMO_WEBHOOK_GUIDE.md
+│   ├── DEMO_WEBHOOK_MINDMAP.md
 │   ├── FILE_MANIFEST.md
 │   ├── GRAPH_API_INTEGRATION_GUIDE.md
 │   ├── IMPLEMENTATION_STATUS.md
@@ -187,6 +189,8 @@ email-automation/
 | **AGENTS_CONFIG.md** | Agent config (agents.yaml), validate-config CLI, and Config API (GET/PUT agents, reload, scenarios). |
 | **FILE_MANIFEST.md** | This file: manifest of all files, modules, classes, and functions. |
 | **CORE_WORKFLOW.md** | Core workflow: high-level pipeline and per-scenario (S1–S4) flow with ASCII diagrams. |
+| **DEMO_WEBHOOK_GUIDE.md** | Detailed 15–20 min webhook demo guide: narrative script, expectations, live run (4 mails, 2+ routes, audience send), Phoenix, Graph/app registration, Q&A. |
+| **DEMO_WEBHOOK_MINDMAP.md** | One-page printable mind map for webhook demo: start order, flow, what to show, sample scenarios. |
 | **GRAPH_API_INTEGRATION_GUIDE.md** | Python Graph API integration: auth, read/send mail, models, error handling, examples. |
 | **IMPLEMENTATION_STATUS.md** | Feature completion status, architecture summary, roadmap, and limitations. |
 | **WEBHOOK_DEV_TUNNEL_SETUP.md** | Microsoft Dev Tunnel setup for local webhook development and subscription lifecycle. |

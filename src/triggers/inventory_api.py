@@ -34,7 +34,7 @@ def _parse_inventory_rows(rows: list[dict[str, Any]]) -> list[InventoryRecord]:
 
 @register_trigger("inventory_api")
 async def inventory_api_fetch(inputs: ProductSupplyInput) -> dict[str, Any]:
-    """Mock fetch from 852 (CDP/Azure) and Value Track (IQVIA), then calculate inventory."""
+    """Mock fetch from 852 (CDP/Azure) and Value Track (IQVIA), then calculate inventory. Raises ValueError if missing required inputs."""
     tracer = get_tracer()
     ndc_str = str(getattr(inputs, "ndc", "") or "")
     dist_str = str(getattr(inputs, "distributor", "") or "")

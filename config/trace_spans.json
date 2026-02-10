@@ -7,6 +7,7 @@
     "input_extract",
     "trigger_fetch",
     "draft",
+    "A11_aggregate",
     "A10_review",
     "A11_format",
     "graph_workflow",
@@ -15,6 +16,10 @@
     "rag_search_call",
     "allocation_api_call",
     "access_api_call",
+    "S3_A_D1",
+    "S3_A_D2",
+    "S3_A_D3",
+    "S3_A_D4",
     "agent run",
     "chat gpt-4o-mini",
     "chat gpt-4o"

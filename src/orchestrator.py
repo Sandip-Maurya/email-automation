@@ -16,7 +16,14 @@ async def _maybe_await(value: T | asyncio.Future[T]) -> T:
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from src.models.email import EmailThread
-from src.models.outputs import ProcessingResult, DraftEmail, FinalEmail, ReviewResult
+from src.models.outputs import (
+    AggregatedContext,
+    ProcessingResult,
+    DraftEmail,
+    FinalEmail,
+    ReviewResult,
+)
+from src.agents.aggregate_a11 import aggregate_context_for_decision
 from src.agents.decision_agent import classify_thread, thread_to_prompt
 from src.utils.tracing import get_tracer
 from src.utils.observability import (
@@ -38,6 +45,12 @@ from src.agents.input_agents import (  # noqa: F401 - register input agents
 )
 from src.agents.review_agent import review_draft
 from src.agents.email_agent import format_final_email
+from src.agents.s3_scaffold import (
+    step_s3_ad1,
+    step_s3_ad2,
+    step_s3_ad3,
+    step_s3_ad4,
+)
 from src.triggers import get_trigger  # imports trigger modules so @register_trigger runs
 from src.utils.logger import get_logger, log_agent_step
 
@@ -71,8 +84,14 @@ async def _step_extract(thread: EmailThread, scenario: str, scenario_cfg: dict, 
     return inputs
 
 
-async def _step_trigger_fetch(inputs: Any, scenario: str, scenario_cfg: dict, tracer: Any) -> dict:
-    """Step: trigger fetch -> trigger_data."""
+async def _step_trigger_fetch(
+    inputs: Any,
+    scenario: str,
+    scenario_cfg: dict,
+    tracer: Any,
+    s3_context: dict[str, Any] | None = None,
+) -> dict:
+    """Step: trigger fetch -> trigger_data. For S3, s3_context is passed to allocation_api."""
     trigger_name = scenario_cfg["trigger"]
     trigger_fn = get_trigger(trigger_name)
     trigger_attrs = {
@@ -81,7 +100,10 @@ async def _step_trigger_fetch(inputs: Any, scenario: str, scenario_cfg: dict, tr
         **span_attributes_for_workflow_step("TOOL", input_summary={"trigger": trigger_name, "scenario": scenario}),
     }
     with tracer.start_as_current_span("trigger_fetch", kind=SpanKind.INTERNAL, attributes=trigger_attrs) as trigger_span:
-        trigger_data = await trigger_fn(inputs)
+        if s3_context is not None and trigger_name == "allocation_api":
+            trigger_data = await trigger_fn(inputs, s3_context=s3_context)
+        else:
+            trigger_data = await trigger_fn(inputs)
         set_span_input_output(trigger_span, output_summary={"source": trigger_data.get("source", "")})
     return trigger_data
 
@@ -120,8 +142,53 @@ async def _step_draft(
     return draft
 
 
+async def _step_a11_aggregate(decision: Any, inputs: Any, tracer: Any) -> AggregatedContext:
+    """Step: Input A11 aggregate -> AggregatedContext (Decision, NDC, Distributor, Year) for Decision A10."""
+    a11_attrs = {
+        "agent.name": "A11",
+        **span_attributes_for_workflow_step(
+            "TOOL",
+            input_summary={"decision": decision.scenario},
+        ),
+    }
+    with tracer.start_as_current_span(
+        "A11_aggregate", kind=SpanKind.INTERNAL, attributes=a11_attrs
+    ) as a11_span:
+        aggregated = aggregate_context_for_decision(decision, inputs)
+        set_span_input_output(
+            a11_span,
+            output_summary={
+                "decision": aggregated.decision,
+                "ndc": aggregated.ndc or "",
+                "distributor": aggregated.distributor or "",
+            },
+        )
+    return aggregated
+
+
+async def _run_s3_scaffold(inputs: Any, tracer: Any) -> dict[str, Any]:
+    """Run S3 Demand IQ scaffold steps A_D1–A_D4 (placeholders); return combined s3_context."""
+    ad1_attrs = span_attributes_for_workflow_step("TOOL", input_summary={"step": "S3_A_D1"})
+    with tracer.start_as_current_span("S3_A_D1", kind=SpanKind.INTERNAL, attributes=ad1_attrs) as span:
+        ad1 = await step_s3_ad1(inputs)
+        set_span_input_output(span, output_summary=ad1)
+    ad2_attrs = span_attributes_for_workflow_step("TOOL", input_summary={"step": "S3_A_D2"})
+    with tracer.start_as_current_span("S3_A_D2", kind=SpanKind.INTERNAL, attributes=ad2_attrs) as span:
+        ad2 = await step_s3_ad2(inputs)
+        set_span_input_output(span, output_summary=ad2)
+    ad3_attrs = span_attributes_for_workflow_step("TOOL", input_summary={"step": "S3_A_D3"})
+    with tracer.start_as_current_span("S3_A_D3", kind=SpanKind.INTERNAL, attributes=ad3_attrs) as span:
+        ad3 = await step_s3_ad3(inputs)
+        set_span_input_output(span, output_summary=ad3)
+    ad4_attrs = span_attributes_for_workflow_step("TOOL", input_summary={"step": "S3_A_D4"})
+    with tracer.start_as_current_span("S3_A_D4", kind=SpanKind.INTERNAL, attributes=ad4_attrs) as span:
+        ad4 = await step_s3_ad4(inputs)
+        set_span_input_output(span, output_summary=ad4)
+    return {"ad1": ad1, "ad2": ad2, "ad3": ad3, "ad4": ad4}
+
+
 async def _step_review(draft: Any, context_for_review: dict, scenario: str, tracer: Any) -> ReviewResult:
-    """Step: A10 review -> review."""
+    """Step: Decision A10 review -> review (approve or flag for human)."""
     a10_attrs = {
         "agent.name": "A10",
         **span_attributes_for_workflow_step("CHAIN", input_summary={"scenario": scenario}),
@@ -140,7 +207,7 @@ async def _step_format(
     scenario: str,
     tracer: Any,
 ) -> FinalEmail:
-    """Step: A11 format -> final_email."""
+    """Step: Email A12 format -> final_email."""
     a11_attrs = {
         "agent.name": "A11",
         **span_attributes_for_workflow_step("CHAIN", input_summary={"scenario": scenario}),
@@ -304,9 +371,20 @@ async def process_email_thread(
     if inputs.confidence < threshold:
         log_agent_step("Orchestrator", "Low confidence -> flag for human", {"confidence": inputs.confidence})
 
-    trigger_data = await _step_trigger_fetch(inputs, scenario, scenario_cfg, tracer)
+    s3_context: dict[str, Any] | None = None
+    if scenario == "S3":
+        s3_context = await _run_s3_scaffold(inputs, tracer)
+
+    trigger_data = await _step_trigger_fetch(
+        inputs, scenario, scenario_cfg, tracer, s3_context=s3_context
+    )
     draft = await _step_draft(thread, scenario, scenario_cfg, inputs, trigger_data, tracer)
-    context_for_review = {"inputs": inputs, "trigger_data": trigger_data}
+    aggregated_context = await _step_a11_aggregate(decision, inputs, tracer)
+    context_for_review = {
+        "inputs": inputs,
+        "trigger_data": trigger_data,
+        "aggregated_context": aggregated_context,
+    }
 
     review = await _step_review(draft, context_for_review, scenario, tracer)
     final_email = await _step_format(draft, review, original_sender, original_sender_name, scenario, tracer)

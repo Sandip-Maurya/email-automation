@@ -61,8 +61,14 @@ class TestAgentRegistry(TestCase):
         self.assertEqual(s1["name"], "Product Supply")
         self.assertEqual(s1["input_agent"], "A1_supply_extract")
         self.assertEqual(s1["trigger"], "inventory_api")
-        self.assertEqual(s1["draft_agent"], "A7_draft")
+        self.assertEqual(s1["draft_agent"], "A6_draft")
         self.assertEqual(s1.get("low_confidence_threshold"), 0.5)
+        s2 = get_scenario_config("S2")
+        self.assertEqual(s2["draft_agent"], "A7_draft")
+        s3 = get_scenario_config("S3")
+        self.assertEqual(s3["draft_agent"], "A8_draft")
+        s4 = get_scenario_config("S4")
+        self.assertEqual(s4["draft_agent"], "A9_draft")
 
     def test_get_scenario_config_unknown_raises(self):
         """get_scenario_config raises ValueError for unknown scenario."""
@@ -73,13 +79,14 @@ class TestAgentRegistry(TestCase):
         self.assertIn("Unknown scenario", str(ctx.exception))
 
     def test_get_user_prompt_template(self):
-        """get_user_prompt_template returns string for A7_draft, None for A0_decision."""
+        """get_user_prompt_template returns string for draft agents, None for A0_decision."""
         from src.agents.registry import get_user_prompt_template
 
-        tpl = get_user_prompt_template("A7_draft")
-        self.assertIsNotNone(tpl)
-        self.assertIn("original_subject", tpl)
-        self.assertIn("trigger_data", tpl)
+        for draft_id in ("A6_draft", "A7_draft", "A8_draft", "A9_draft"):
+            tpl = get_user_prompt_template(draft_id)
+            self.assertIsNotNone(tpl, f"{draft_id} should have template")
+            self.assertIn("original_subject", tpl)
+            self.assertIn("trigger_data", tpl)
 
         tpl0 = get_user_prompt_template("A0_decision")
         self.assertIsNone(tpl0)

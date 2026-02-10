@@ -13,8 +13,18 @@ class ScenarioDecision(BaseModel):
     reasoning: str
 
 
+class AggregatedContext(BaseModel):
+    """Input Agent A11 output: aggregated context (Decision, NDC, Distributor, Year) for Decision A10."""
+
+    decision: str  # scenario
+    ndc: Optional[str] = None
+    distributor: Optional[str] = None
+    year: Optional[int] = None
+    year_end: Optional[int] = None
+
+
 class DraftEmail(BaseModel):
-    """Draft email from Draft Email Agents (A7/A8)."""
+    """Draft email from Draft Email Agents (A6-A9)."""
 
     subject: str
     body: str

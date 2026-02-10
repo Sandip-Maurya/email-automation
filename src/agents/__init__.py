@@ -16,7 +16,14 @@ from src.agents.input_agents import (
     extract_allocation,
     extract_catchall,
 )
-from src.agents.draft_agents import draft_supply_or_access, draft_allocation_or_catchall
+from src.agents.draft_agents import (
+    draft_supply,
+    draft_access,
+    draft_allocation,
+    draft_catchall,
+    draft_supply_or_access,
+    draft_allocation_or_catchall,
+)
 from src.agents.review_agent import review_draft
 from src.agents.email_agent import format_final_email
 
@@ -35,6 +42,10 @@ __all__ = [
     "extract_access",
     "extract_allocation",
     "extract_catchall",
+    "draft_supply",
+    "draft_access",
+    "draft_allocation",
+    "draft_catchall",
     "draft_supply_or_access",
     "draft_allocation_or_catchall",
     "review_draft",

@@ -13,8 +13,12 @@ from src.utils.tracing import get_tracer
 
 
 @register_trigger("allocation_api")
-async def allocation_api_simulate(inputs: ProductAllocationInput) -> dict[str, Any]:
-    """Mock allocation simulation: pull allocation from DCS, spec-buy style metrics."""
+async def allocation_api_simulate(
+    inputs: ProductAllocationInput,
+    s3_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Mock allocation simulation: pull allocation from DCS, spec-buy style metrics.
+    Optional s3_context from S3 scaffold (A_D1–A_D4) is merged into result when provided."""
     tracer = get_tracer()
     ndc_str = str(getattr(inputs, "ndc", "") or "")
     dist_str = str(getattr(inputs, "distributor", "") or "")
@@ -44,7 +48,7 @@ async def allocation_api_simulate(inputs: ProductAllocationInput) -> dict[str, A
         span.set_attribute("api.total_quantity_used", total_used)
         set_span_input_output(span, output_summary={"records_found": len(matching), "total_quantity_allocated": total_allocated, "total_quantity_used": total_used})
         log_agent_step("Trigger", "Allocation result", {"matches": len(matching), "allocated": total_allocated, "used": total_used})
-        return {
+        result = {
             "allocation_records": matching,
             "total_quantity_allocated": total_allocated,
             "total_quantity_used": total_used,
@@ -53,3 +57,6 @@ async def allocation_api_simulate(inputs: ProductAllocationInput) -> dict[str, A
             "source": "mock_dcs_allocation",
             "spec_buy_note": "Mock spec-buy report: purchase/dispense/build/burn/WAC not simulated.",
         }
+        if s3_context is not None:
+            result["s3_scaffold"] = s3_context
+        return result

@@ -59,22 +59,28 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 │   │ Agent A1   │ Agent A2   │ Agent A3   │ Agent A4   │  Input      │  │
 │   │ Extract    │ Extract    │ Extract    │ Extract    │  Agents     │  │
 │   ├────────────┼────────────┼────────────┼────────────┤             │  │
-│   │ Inventory  │ Access     │ Allocation │ RAG        │  Triggers   │  │
-│   │ API        │ API        │ API        │ Search     │             │  │
+│   │ Inventory  │ Access     │ A_D1..A_D4 │ RAG        │  Triggers   │  │
+│   │ API        │ API        │ (S3 only)  │ Search     │             │  │
 │   ├────────────┼────────────┼────────────┼────────────┤             │  │
-│   │ Agent A7   │ Agent A7   │ Agent A8   │ Agent A8   │  Draft      │  │
+│   │ Agent A6   │ Agent A7   │ Agent A8   │ Agent A9   │  Draft      │  │
 │   │ Draft      │ Draft      │ Draft      │ Draft      │  Agents     │  │
 │   └────────────┴────────────┴────────────┴────────────┘             │  │
 │                                │                                     │  │
 │                                ▼                                     │  │
 │   ┌─────────────────────────────────────────────────────────────────┐│  │
-│   │                    Review Agent (A10)                          ││  │
+│   │                    Input A11 (aggregate)                        ││  │
+│   │    Decision, NDC, Distributor, Year → context for A10           ││  │
+│   └─────────────────────────────────────────────────────────────────┘│  │
+│                                │                                     │  │
+│                                ▼                                     │  │
+│   ┌─────────────────────────────────────────────────────────────────┐│  │
+│   │                    Decision Agent (A10) / Review                 ││  │
 │   │    Quality Check • Accuracy • Approval/Human Review Flag       ││  │
 │   └─────────────────────────────────────────────────────────────────┘│  │
 │                                │                                     │  │
 │                                ▼                                     │  │
 │   ┌─────────────────────────────────────────────────────────────────┐│  │
-│   │                    Email Agent (A11)                           ││  │
+│   │                    Email Agent (A12)                            ││  │
 │   │    Final Formatting • Human Review Header (if needed)          ││  │
 │   └─────────────────────────────────────────────────────────────────┘│  │
 │                                │                                     │  │
@@ -121,10 +127,14 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 | A2 - Access Input | `agents/input_agents.py` | ✅ Complete | Extracts customer, DEA, 340B, etc. |
 | A3 - Allocation Input | `agents/input_agents.py` | ✅ Complete | Extracts urgency, year range, distributor |
 | A4 - Catch-All Input | `agents/input_agents.py` | ✅ Complete | Extracts topics for RAG search |
-| A7 - Supply/Access Draft | `agents/draft_agents.py` | ✅ Complete | Drafts emails for S1 and S2 |
-| A8 - Allocation/Catch-All Draft | `agents/draft_agents.py` | ✅ Complete | Drafts emails for S3 and S4 |
-| A10 - Review | `agents/review_agent.py` | ✅ Complete | Quality check, accuracy, approval |
-| A11 - Email Format | `agents/email_agent.py` | ✅ Complete | Final formatting, human review header |
+| A6 - Supply Draft | `agents/draft_agents.py` | ✅ Complete | Drafts emails for S1 only |
+| A7 - Access Draft | `agents/draft_agents.py` | ✅ Complete | Drafts emails for S2 only |
+| A8 - Allocation Draft | `agents/draft_agents.py` | ✅ Complete | Drafts emails for S3 only |
+| A9 - Catch-All Draft | `agents/draft_agents.py` | ✅ Complete | Drafts emails for S4 only |
+| Input A11 (aggregate) | `agents/aggregate_a11.py` | ✅ Complete | Aggregates Decision, NDC, Distributor, Year for Decision A10 |
+| A10 - Decision (Review) | `agents/review_agent.py` | ✅ Complete | Quality check, accuracy, approval (Decision A10) |
+| A12 - Email Format | `agents/email_agent.py` | ✅ Complete | Final formatting, human review header (Email A12) |
+| S3 Demand IQ scaffold | `agents/s3_scaffold.py` | ✅ Scaffold | A_D1–A_D4 placeholder steps; real integration TBD |
 
 ### 4. Triggers (External API Integrations)
 
@@ -152,7 +162,7 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 
 | Feature | Description | Files |
 |---------|-------------|-------|
-| Multi-Agent Pipeline | Full A0→A1-4→A7/A8→A10→A11 pipeline | `src/agents/`, `src/orchestrator.py` |
+| Multi-Agent Pipeline | Full A0→A1-4→A6/A7/A8/A9→Input A11→Decision A10→Email A12; S3 scaffold A_D1–A_D4 | `src/agents/`, `src/orchestrator.py` |
 | Configuration Externalization | Prompts, model settings, scenario wiring in `config/agents.yaml`; Config API and `validate-config` CLI | `config/agents.yaml`, `src/agents/registry.py`, `src/webhook/config_routes.py`, `src/cli/validate_config.py` |
 | Scenario Classification | S1 (Supply), S2 (Access), S3 (Allocation), S4 (Catch-All) | `src/agents/decision_agent.py` |
 | Structured Logging | Structlog with console (colored) + JSONL file output | `src/utils/logger.py` |
@@ -284,10 +294,12 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 | `A0_classify` | agent.name | Decision agent classification |
 | `input_extract` | agent.name, workflow.scenario | Input agent extraction |
 | `trigger_fetch` | trigger.type, workflow.scenario | External API call |
-| `draft` | agent.name, workflow.scenario | Draft generation |
-| `A10_review` | agent.name | Review agent quality check |
-| `A11_format` | agent.name | Final email formatting |
-| `send_email` | provider | Email send operation |
+| `draft` | agent.name, workflow.scenario | Draft generation (A6–A9) |
+| `A11_aggregate` | agent.name | Input A11: aggregate Decision, NDC, Distributor, Year |
+| `A10_review` | agent.name | Decision A10: review agent quality check |
+| `A11_format` | agent.name | Email A12: final email formatting |
+| `S3_A_D1`, `S3_A_D2`, `S3_A_D3`, `S3_A_D4` | step | S3 Demand IQ scaffold (placeholder) |
+| `reply_to_message` | provider | Email send operation |
 | `webhook.receive` | batch_size, subscription_id, enqueued | Webhook notifications POST root span |
 | `graph_workflow` | sender, thread_id, scenario | Graph mode root span |
 

@@ -9,6 +9,7 @@ from src.models.inputs import (
 )
 from src.models.outputs import (
     ScenarioDecision,
+    AggregatedContext,
     ReviewResult,
     ProcessingResult,
     DraftEmail,
@@ -30,6 +31,7 @@ __all__ = [
     "ProductAllocationInput",
     "CatchAllInput",
     "ScenarioDecision",
+    "AggregatedContext",
     "ReviewResult",
     "ProcessingResult",
     "DraftEmail",
