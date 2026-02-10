@@ -1,0 +1,22 @@
+{
+  "allowed_span_names": [
+    "process_trigger",
+    "fetch_thread",
+    "reply_to_message",
+    "A0_classify",
+    "input_extract",
+    "trigger_fetch",
+    "draft",
+    "A10_review",
+    "A11_format",
+    "graph_workflow",
+    "fetch_email",
+    "inventory_api_call",
+    "rag_search_call",
+    "allocation_api_call",
+    "access_api_call",
+    "agent run",
+    "chat gpt-4o-mini",
+    "chat gpt-4o"
+  ]
+}

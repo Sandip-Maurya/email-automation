@@ -17,7 +17,7 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from src.models.email import EmailThread
 from src.models.outputs import ProcessingResult, DraftEmail, FinalEmail, ReviewResult
-from src.agents.decision_agent import classify_thread
+from src.agents.decision_agent import classify_thread, thread_to_prompt
 from src.utils.tracing import get_tracer
 from src.utils.observability import (
     thread_preview_for_observability,
@@ -99,6 +99,7 @@ async def _step_draft(
     draft_agent = get_agent(draft_agent_id, DraftEmail)
     template = get_user_prompt_template(draft_agent_id)
     original_subject = thread.latest_email.subject if thread.latest_email else ""
+    email_thread = thread_to_prompt(thread)
     draft_attrs = {
         "agent.name": draft_agent_id,
         "workflow.scenario": scenario,
@@ -107,6 +108,7 @@ async def _step_draft(
     with tracer.start_as_current_span("draft", kind=SpanKind.INTERNAL, attributes=draft_attrs) as draft_span:
         prompt = template.format(
             original_subject=original_subject,
+            email_thread=email_thread,
             inputs=inputs,
             trigger_data=trigger_data,
         )

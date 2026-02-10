@@ -41,13 +41,9 @@ PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
 PHOENIX_PROTOCOL = os.getenv("PHOENIX_PROTOCOL", "").lower() or None  # "http/protobuf" | "grpc" | None=infer
 # Resource attribute for Phoenix/OTel (e.g. "development", "staging", "production")
 DEPLOYMENT_ENVIRONMENT = os.getenv("DEPLOYMENT_ENVIRONMENT", "development")
-# Span names whose descendant spans are dropped from traces (comma-separated); empty = no filtering.
-_raw_drop_children = os.getenv("TRACE_DROP_CHILDREN_OF_SPANS", "fetch_thread,reply_to_message").strip()
-TRACE_DROP_CHILDREN_OF_SPANS: frozenset[str] = (
-    frozenset(s.strip() for s in _raw_drop_children.split(",") if s.strip())
-    if _raw_drop_children
-    else frozenset()
-)
+# Trace span allowlist config path (relative to PROJECT_ROOT or absolute); used for allowlist-only span filtering.
+_raw_trace_spans = os.getenv("TRACE_SPANS_CONFIG", "config/trace_spans.json").strip()
+TRACE_SPANS_CONFIG_PATH = Path(_raw_trace_spans) if Path(_raw_trace_spans).is_absolute() else PROJECT_ROOT / _raw_trace_spans
 
 # Graph API (for real provider)
 TARGET_SENDER = os.getenv("TARGET_SENDER", "")

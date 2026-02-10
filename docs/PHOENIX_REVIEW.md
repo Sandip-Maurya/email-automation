@@ -24,10 +24,10 @@ present and what is missing for reliable production tracing.
   the main flow is a linear sequence of awaits with reduced nesting.
 - Phoenix configuration is centralized in `src/config.py`; PII-safe summaries are used for input/output
   (e.g. thread_id, scenario, counts) via observability helpers.
-- **Span filtering**: Noisy child spans under `fetch_thread` and `reply_to_message` (e.g. Graph/HTTP
-  `send_async`, `get_http_response_message`) are filtered by `DropDescendantsFilterProcessor`
-  (`src/utils/span_filter.py`) so only the top-level workflow spans are exported. Boundary names are
-  configurable via `TRACE_DROP_CHILDREN_OF_SPANS` (comma-separated; empty = no filtering).
+- **Span filtering**: Trace export is allowlist-only. Only span names listed in `config/trace_spans.json`
+  (`allowed_span_names`) are exported; all others (root or child) are dropped and logged with a warning.
+  Config path can be overridden via `TRACE_SPANS_CONFIG`. Empty or missing config means no filtering.
+  Implemented in `AllowlistSpanFilterProcessor` (`src/utils/span_filter.py`).
 
 ## Architecture (as implemented)
 - **Initialization**: CLI entrypoint calls `init_tracing()` once at startup. Tracing is no-op when

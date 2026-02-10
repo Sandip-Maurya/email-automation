@@ -10,7 +10,7 @@ from src.config import (
     PHOENIX_ENABLED,
     PHOENIX_PROJECT_NAME,
     PHOENIX_PROTOCOL,
-    TRACE_DROP_CHILDREN_OF_SPANS,
+    TRACE_SPANS_CONFIG_PATH,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,13 +104,10 @@ def _build_pipeline_with_openinference_first():
 
         exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers)
 
-    from src.utils.span_filter import DropDescendantsFilterProcessor
+    from src.utils.span_filter import AllowlistSpanFilterProcessor
 
     batch = BatchSpanProcessor(exporter)
-    filter_processor = DropDescendantsFilterProcessor(
-        batch,
-        drop_children_of_names=set(TRACE_DROP_CHILDREN_OF_SPANS),
-    )
+    filter_processor = AllowlistSpanFilterProcessor(batch, config_path=TRACE_SPANS_CONFIG_PATH)
     provider.add_span_processor(filter_processor)
     trace.set_tracer_provider(provider)
     return provider

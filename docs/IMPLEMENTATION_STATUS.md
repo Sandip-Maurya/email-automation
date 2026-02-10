@@ -262,10 +262,10 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 - `PHOENIX_API_KEY`: Authentication for cloud endpoint
 - `PHOENIX_PROTOCOL`: Auto-detected or explicit (`http/protobuf`, `grpc`)
 - `DEPLOYMENT_ENVIRONMENT`: Resource attribute (e.g. `development`, `staging`, `production`); default `development`
-- `TRACE_DROP_CHILDREN_OF_SPANS`: Comma-separated span names whose descendant spans are dropped from traces (default `fetch_thread,reply_to_message`); set empty to disable filtering.
+- `TRACE_SPANS_CONFIG`: Path to trace span allowlist JSON (default `config/trace_spans.json`). Only spans listed in `allowed_span_names` are exported; others are dropped and logged with a warning. Empty or missing config means no filtering.
 
 **Tracing pipeline** (`src/utils/tracing.py`):
-- Explicit pipeline: OpenInferenceSpanProcessor runs before export so spans have OpenInference attributes (kind, input/output) before being sent to Phoenix. DropDescendantsFilterProcessor wraps BatchSpanProcessor and drops descendant spans of configured boundary names (e.g. fetch_thread, reply_to_message) so Phoenix shows only top-level workflow spans.
+- Explicit pipeline: OpenInferenceSpanProcessor runs before export so spans have OpenInference attributes (kind, input/output) before being sent to Phoenix. AllowlistSpanFilterProcessor wraps BatchSpanProcessor and forwards only spans whose name is in the allowlist (from `config/trace_spans.json`); all other spans are dropped and logged with a warning.
 - Resource includes `service.name`, `service.version`, `deployment.environment`, and Phoenix project name.
 - Pydantic AI agents use `InstrumentationSettings(version=2)`; OpenInference instrumentor enriches LLM spans.
 - `shutdown_tracing()` is called on CLI exit (`main.py`) and in webhook lifespan shutdown to flush and shut down the provider.

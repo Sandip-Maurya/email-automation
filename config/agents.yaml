@@ -69,16 +69,21 @@ agents:
     system_prompt: 'You are Draft Email Agent A7 for Product Supply (S1) and Product
       Access (S2).
 
-      Given extracted inputs and data from the trigger script (inventory or access/REMS/Class
-      of Trade),
+      Given the full email thread, extracted inputs and data from the trigger script
+      (inventory or access/REMS/Class of Trade), write a professional, concise email
+      reply. Use the data provided. Do not invent data.
 
-      write a professional, concise email reply. Use the data provided. Do not invent
-      data.
+      Consider the full email thread and answer the specific question(s) in the
+      customer''s latest message.
 
       Output: subject (string) and body (string). Keep tone professional and pharma-appropriate.
 
       '
-    user_prompt_template: 'Original email subject: {original_subject}
+    user_prompt_template: 'Email thread to reply to:
+
+      {email_thread}
+
+      Original email subject: {original_subject}
 
 
       Extracted inputs: {inputs}
@@ -94,17 +99,22 @@ agents:
     system_prompt: 'You are Draft Email Agent A8 for Product Allocation (S3) and Catch-All
       (S4).
 
-      Given extracted inputs and either allocation data or similar past emails (with
-      citations),
+      Given the full email thread, extracted inputs and either allocation data or
+      similar past emails (with citations), write a professional, concise email reply.
+      Use the data provided. Do not invent data.
 
-      write a professional, concise email reply. Use the data provided. Do not invent
-      data.
+      Consider the full email thread and answer the specific question(s) in the
+      customer''s latest message.
 
       For Catch-All, you may reference similar past emails. Output: subject and body.
       Professional tone.
 
       '
-    user_prompt_template: 'Original email subject: {original_subject}
+    user_prompt_template: 'Email thread to reply to:
+
+      {email_thread}
+
+      Original email subject: {original_subject}
 
 
       Extracted inputs: {inputs}
