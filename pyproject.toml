@@ -29,6 +29,7 @@ dependencies = [
     "email-validator>=2.0",
     # Agent config (YAML)
     "pyyaml>=6.0",
+    "openinference-instrumentation>=0.1.44",
 ]
 
 [project.scripts]
