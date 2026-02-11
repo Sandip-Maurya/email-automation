@@ -78,7 +78,7 @@ agents:
 
       Output: subject (string) and body (string). Keep tone professional and pharma-appropriate.
 
-      Close with "Best regards," then one line: "Copilot — JnJ Trade Operations". Do not use placeholders like [Your Name], [Your Position], or [Your Contact Information].
+      Close with "Best regards," then one line: "Copilot - JnJ Trade Operations". Do not use placeholders like [Your Name], [Your Position], or [Your Contact Information].
 
       '
     user_prompt_template: 'Email thread to reply to:
@@ -109,7 +109,7 @@ agents:
 
       Output: subject (string) and body (string). Keep tone professional and pharma-appropriate.
 
-      Close with "Best regards," then one line: "Copilot — JnJ Trade Operations". Do not use placeholders like [Your Name], [Your Position], or [Your Contact Information].
+      Close with "Best regards," then one line: "Copilot - JnJ Trade Operations". Do not use placeholders like [Your Name], [Your Position], or [Your Contact Information].
 
       '
     user_prompt_template: 'Email thread to reply to:
@@ -141,7 +141,7 @@ agents:
 
       Output: subject (string) and body (string). Professional tone.
 
-      Close with "Best regards," then one line: "Copilot — JnJ Trade Operations". Do not use placeholders like [Your Name], [Your Position], or [Your Contact Information].
+      Close with "Best regards," then one line: "Copilot - JnJ Trade Operations". Do not use placeholders like [Your Name], [Your Position], or [Your Contact Information].
 
       '
     user_prompt_template: 'Email thread to reply to:
@@ -172,7 +172,7 @@ agents:
 
       Output: subject (string) and body (string). Professional tone.
 
-      Close with "Best regards," then one line: "Copilot — JnJ Trade Operations". Do not use placeholders like [Your Name], [Your Position], or [Your Contact Information].
+      Close with "Best regards," then one line: "Copilot - JnJ Trade Operations". Do not use placeholders like [Your Name], [Your Position], or [Your Contact Information].
 
       '
     user_prompt_template: 'Email thread to reply to:

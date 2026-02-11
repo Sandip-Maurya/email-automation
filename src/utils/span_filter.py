@@ -100,7 +100,7 @@ class AllowlistSpanFilterProcessor(SpanProcessor):
         if self._is_allowed(name):
             self._next.on_end(span)
             return
-        logger.warning("trace_span_filtered span_name=%s", name)
+        logger.debug("trace_span_filtered span_name=%s", name)
         # Do not forward
 
     def shutdown(self) -> None:
