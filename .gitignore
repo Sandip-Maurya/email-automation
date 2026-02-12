@@ -15,8 +15,6 @@ venv/
 # ignore cache files
 __pycache__/
 
-# ignore data files
-data/
 
 # ignore output files
 output/

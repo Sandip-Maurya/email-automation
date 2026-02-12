@@ -9,7 +9,7 @@ T = TypeVar("T")
 
 async def _maybe_await(value: T | asyncio.Future[T]) -> T:
     """Await if value is a coroutine; otherwise return as-is (sync provider)."""
-    if asyncio.iscoroutine(value):
+    if isinstance(value, asyncio.Future):
         return await value
     return value
 
