@@ -7,6 +7,7 @@ import typer
 from rich.table import Table
 
 from src.config import INBOX_PATH, OUTPUT_DIR
+from src.db import init_db
 from src.orchestrator import process_trigger
 from src.utils.logger import bind_context, clear_context
 
@@ -26,6 +27,7 @@ def interactive(
     inbox: Path = typer.Option(INBOX_PATH, "--inbox", "-e", help="Path to inbox.json"),
 ) -> None:
     """Interactive: list conversations from inbox, pick one, process and send."""
+    init_db()
     log = logger.bind(command="interactive", inbox=str(inbox))
     log.info("interactive.start")
     provider = get_mock_provider(inbox_path=inbox)

@@ -127,6 +127,10 @@ Agent prompts, model defaults, and scenario wiring (which input/trigger/draft pe
 - **Logs**: `output/processing_log.csv` — Summary log
 - **Sent Items**: `output/sent_items.json` — Sent email store
 
+### Phase 1 database (SQLite)
+
+S1 (Product Supply), S2 (Product Access), and S3 (Product Allocation) triggers read from a SQLite database instead of CSV. On the **first run** of any mode (interactive, batch, graph, webhook), tables are created and seeded from CSV files under `data/` (`inventory.csv`, `customers.csv`, `allocations.csv`, and optionally `locations.csv`, `distributors.csv`, `products.csv`). If the database and tables already exist, no creation or seeding is performed. Set `DATABASE_URL` in `.env` to override the default DB path (default: `data/email_automation.db`).
+
 ## Observability
 
 ### Phoenix Dashboard (Tracing)

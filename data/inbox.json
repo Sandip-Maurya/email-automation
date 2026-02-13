@@ -7,9 +7,9 @@
     "subject": "Inventory inquiry NDC 12345-678-90",
     "body": {
       "contentType": "text",
-      "content": "Hello,\n\nWe need to check current inventory for NDC 12345-678-90 at our Dallas distribution center. Can you confirm quantities available through ABC Distributor?\n\nThank you,\nPharmacy Operations"
+      "content": "Hello,\n\nWe need to check current inventory for NDC 12345-678-90 at location WH-01. Can you confirm quantities available through DIST-A (Acme Distribution)?\n\nThank you,\nPharmacy Operations"
     },
-    "bodyPreview": "We need to check current inventory for NDC 12345-678-90 at our Dallas distribution center.",
+    "bodyPreview": "We need to check current inventory for NDC 12345-678-90 at location WH-01.",
     "from": {
       "emailAddress": {
         "address": "pharmacy@example.com",
@@ -33,9 +33,9 @@
     "subject": "Re: Inventory inquiry NDC 12345-678-90",
     "body": {
       "contentType": "text",
-      "content": "Please see below. We have 5,000 units at Dallas for that NDC through ABC Distributor.\n\nRegards,\nTrade Desk\n\nOn 15 Jan 2025, pharmacy@example.com wrote:\n> We need to check current inventory for NDC 12345-678-90 at our Dallas distribution center."
+      "content": "Please see below. We have stock at WH-01 for that NDC through DIST-A.\n\nRegards,\nTrade Desk\n\nOn 15 Jan 2025, pharmacy@example.com wrote:\n> We need to check current inventory for NDC 12345-678-90 at location WH-01. Can you confirm quantities available through DIST-A (Acme Distribution)?"
     },
-    "bodyPreview": "Please see below. We have 5,000 units at Dallas for that NDC.",
+    "bodyPreview": "Please see below. We have stock at WH-01 for that NDC.",
     "from": {
       "emailAddress": {
         "address": "trade@company.com",
@@ -59,7 +59,7 @@
     "subject": "Re: Inventory inquiry NDC 12345-678-90",
     "body": {
       "contentType": "text",
-      "content": "Thank you for the quick response. Can we also get the same for Chicago location, same NDC and ABC Distributor?\n\nOn 15 Jan 2025, trade@company.com wrote:\n> Please see below. We have 5,000 units at Dallas for that NDC through ABC Distributor."
+      "content": "Thank you for the quick response. Can we also get the same for WH-02, same NDC 12345-678-90 and DIST-A?\n\nOn 15 Jan 2025, trade@company.com wrote:\n> Please see below. We have stock at WH-01 for that NDC through DIST-A."
     },
     "bodyPreview": "Thank you. Can we also get the same for Chicago location?",
     "from": {
@@ -111,7 +111,7 @@
     "subject": "Allocation request Q1 2025",
     "body": {
       "contentType": "text",
-      "content": "We are requesting allocation details for NDC 12345-678-90 for 2025 (Jan-Dec). Urgent - need by EOW. Distributor: XYZ Pharma.\n\nThanks,\nAllocations Team"
+      "content": "We are requesting allocation details for NDC 12345-678-90 for 2025 (Jan-Dec). Urgent - need by EOW. Distributor: DIST-A (Acme Distribution).\n\nThanks,\nAllocations Team"
     },
     "bodyPreview": "Requesting allocation details for NDC 12345-678-90 for 2025. Urgent.",
     "from": {
@@ -163,9 +163,9 @@
     "subject": "Stock check multiple NDCs",
     "body": {
       "contentType": "text",
-      "content": "Please provide inventory levels for NDC 12345-678-90 and NDC 98765-432-10 at Chicago location. Distributor: ABC Distributor.\n\nHospital Supply"
+      "content": "Please provide inventory levels for NDC 12345-678-90 and NDC 99999-001-00 at WH-01. Distributor: DIST-B (Beta Wholesale).\n\nHospital Supply"
     },
-    "bodyPreview": "Please provide inventory levels for NDC 12345-678-90 and NDC 98765-432-10.",
+    "bodyPreview": "Please provide inventory levels for NDC 12345-678-90 and NDC 99999-001-00.",
     "from": {
       "emailAddress": {
         "address": "supply@hospital.org",

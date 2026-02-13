@@ -12,6 +12,7 @@ from src.config import (
     WEBHOOK_CLIENT_STATE,
     SUBSCRIPTION_EXPIRATION_MINUTES,
 )
+from src.db import init_db
 from src.webhook.server import create_app
 
 from .shared import console, logger
@@ -28,6 +29,7 @@ def webhook(
     host: str = typer.Option("0.0.0.0", "--host", "-h", help="Bind host"),
 ) -> None:
     """Start the webhook listener; optionally create a Graph subscription for new mail."""
+    init_db()
     log = logger.bind(command="webhook", port=port)
     log.info("webhook.start")
 

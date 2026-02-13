@@ -14,6 +14,10 @@ OUTPUT_DIR = PROJECT_ROOT / "output"
 INBOX_PATH = DATA_DIR / "inbox.json"
 SENT_ITEMS_PATH = OUTPUT_DIR / "sent_items.json"
 
+# Database (Phase 1: SQLite)
+_db_path = (DATA_DIR / "email_automation.db").resolve()
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_db_path.as_posix()}")
+
 # Ensure directories exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

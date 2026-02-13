@@ -46,6 +46,18 @@ def load_products(csv_path: Path | None = None) -> list[dict[str, Any]]:
     return _read_csv(path)
 
 
+def load_distributors(csv_path: Path | None = None) -> list[dict[str, Any]]:
+    """Load distributors from distributors.csv."""
+    path = csv_path or DATA_DIR / "distributors.csv"
+    return _read_csv(path)
+
+
+def load_locations(csv_path: Path | None = None) -> list[dict[str, Any]]:
+    """Load locations from locations.csv."""
+    path = csv_path or DATA_DIR / "locations.csv"
+    return _read_csv(path)
+
+
 def load_past_emails(csv_path: Path | None = None) -> list[dict[str, Any]]:
     """Load past emails for RAG from past_emails.csv."""
     path = csv_path or DATA_DIR / "past_emails.csv"

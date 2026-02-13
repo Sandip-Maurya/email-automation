@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any, TypeVar
 T = TypeVar("T")
 
 
-async def _maybe_await(value: T | asyncio.Future[T]) -> T:
-    """Await if value is a coroutine; otherwise return as-is (sync provider)."""
-    if isinstance(value, asyncio.Future):
+async def _maybe_await(value: T | asyncio.Future[T] | Any) -> T:
+    """Await if value is a coroutine or Future; otherwise return as-is (sync provider)."""
+    if asyncio.iscoroutine(value) or isinstance(value, asyncio.Future):
         return await value
     return value
 

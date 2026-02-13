@@ -1,0 +1,4 @@
+customer_id,name,dea_number,address,class_of_trade,rems_certified,is_340b,ldn,distributor
+CUST-001,Acme Pharmacy,AB1234567,123 Main St,Retail,true,false,,DIST-A
+CUST-002,Hospital North,CD9876543,456 Oak Ave,Hospital,true,true,,DIST-A
+CUST-003,Beta Drug,EF1111111,789 Elm St,Retail,false,false,,DIST-B

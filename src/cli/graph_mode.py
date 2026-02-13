@@ -7,6 +7,7 @@ import typer
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from src.config import TARGET_SENDER
+from src.db import init_db
 from src.mail_provider.graph_real import GraphProvider
 from src.mail_provider.mapping import graph_messages_to_thread
 from src.orchestrator import process_email_thread
@@ -29,6 +30,7 @@ def graph(
     sender: str | None = typer.Option(None, "--sender", "-s", help="Override TARGET_SENDER"),
 ) -> None:
     """Process latest email from sender using real Graph API; confirm before sending reply."""
+    init_db()
     effective_sender = (sender or os.getenv("TARGET_SENDER") or TARGET_SENDER or "").strip()
     log = logger.bind(command="graph", sender=effective_sender or None)
     log.info("graph.start")

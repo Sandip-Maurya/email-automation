@@ -1,0 +1,6 @@
+ndc,product_name,location,distributor,quantity_available,snapshot_date,source
+12345-678-90,Product Alpha,WH-01,DIST-A,100,2025-02-01,mock
+12345-678-90,Product Alpha,WH-02,DIST-A,50,2025-02-01,mock
+99999-001-00,Product Beta,WH-01,DIST-B,200,2025-02-01,mock
+99999-001-00,Product Beta,WH-02,DIST-B,80,2025-02-01,mock
+12345-678-90,Product Alpha,WH-01,DIST-B,75,2025-02-01,mock

@@ -30,6 +30,8 @@ dependencies = [
     # Agent config (YAML)
     "pyyaml>=6.0",
     "openinference-instrumentation>=0.1.44",
+    # Database (Phase 1: SQLite + ORM)
+    "sqlalchemy>=2.0",
 ]
 
 [project.scripts]

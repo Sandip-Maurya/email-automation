@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from src.config import INBOX_PATH, OUTPUT_DIR
+from src.db import init_db
 from src.orchestrator import process_trigger
 from src.utils.logger import bind_context, clear_context
 
@@ -26,6 +27,7 @@ def batch(
     output_dir: Path = typer.Option(OUTPUT_DIR, "--output", "-o", help="Output directory"),
 ) -> None:
     """Process all conversations in inbox: draft and send each reply."""
+    init_db()
     log = logger.bind(command="batch", inbox=str(inbox), output_dir=str(output_dir))
     log.info("batch.start")
     provider = get_mock_provider(inbox_path=inbox, sent_path=output_dir / "sent_items.json")
