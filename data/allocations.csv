@@ -1,5 +1,0 @@
-ndc,distributor,year,quantity_allocated,quantity_used,source
-12345-678-90,DIST-A,2025,500,100,mock
-12345-678-90,DIST-A,2025,500,50,mock
-99999-001-00,DIST-B,2025,1000,200,mock
-12345-678-90,DIST-B,2025,300,75,mock
