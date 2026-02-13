@@ -7,8 +7,8 @@ from llama_index.core.workflow import (
     StartEvent,
     StopEvent,
 )
-from src.models.outputs import ProcessingResult
 
+from src.models.outputs import ProcessingResult
 from src.orchestration_step import (
     _step_classify,
     _step_extract,
@@ -25,18 +25,22 @@ from src.utils.tracing import get_tracer
 
 
 # ============================================================
-# EVENT MODELS (IMPORTANT: NO __init__ HERE)
+# EVENT MODELS (NO __init__)
 # ============================================================
 
 class ClassifiedEvent(Event):
     thread: Any
     provider: Any
+    reply_to_message_id: str | None
+    user_id: str | None
     decision: Any
 
 
 class ExtractedEvent(Event):
     thread: Any
     provider: Any
+    reply_to_message_id: str | None
+    user_id: str | None
     decision: Any
     inputs: Any
     scenario_cfg: Dict
@@ -45,6 +49,8 @@ class ExtractedEvent(Event):
 class DraftedEvent(Event):
     thread: Any
     provider: Any
+    reply_to_message_id: str | None
+    user_id: str | None
     decision: Any
     inputs: Any
     scenario_cfg: Dict
@@ -57,7 +63,7 @@ class DraftedEvent(Event):
 # ============================================================
 
 def debug_print(title: str, data: dict):
-    print(f"\n {title}")
+    print(f"\n{title}")
     for k, v in data.items():
         print(f"   {k}: {v}")
 
@@ -69,22 +75,20 @@ def debug_print(title: str, data: dict):
 class EmailWorkflow(Workflow):
 
     # --------------------------------------------------------
-    # STEP 1 — A0 CLASSIFY
+    # STEP 1 — CLASSIFY
     # --------------------------------------------------------
     @step
     async def classify(self, ev: StartEvent) -> ClassifiedEvent:
         print("\n========== STEP A0: CLASSIFY ==========")
 
         tracer = get_tracer()
-        thread = ev.thread
-        provider = ev.provider
 
         debug_print("INPUT", {
-            "thread_id": thread.thread_id,
-            "subject": thread.latest_email.subject if thread.latest_email else None,
+            "thread_id": ev.thread.thread_id,
+            "subject": ev.thread.latest_email.subject if ev.thread.latest_email else None,
         })
 
-        decision = await _step_classify(thread, tracer)
+        decision = await _step_classify(ev.thread, tracer)
 
         debug_print("OUTPUT", {
             "scenario": decision.scenario,
@@ -92,20 +96,21 @@ class EmailWorkflow(Workflow):
         })
 
         return ClassifiedEvent(
-            thread=thread,
-            provider=provider,
+            thread=ev.thread,
+            provider=ev.provider,
+            reply_to_message_id=ev.reply_to_message_id,
+            user_id=ev.user_id,
             decision=decision,
         )
 
     # --------------------------------------------------------
-    # STEP 2 — INPUT EXTRACT
+    # STEP 2 — EXTRACT
     # --------------------------------------------------------
     @step
     async def extract(self, ev: ClassifiedEvent) -> ExtractedEvent:
         print("\n========== STEP: INPUT EXTRACT ==========")
 
         tracer = get_tracer()
-
         scenario_cfg = get_scenario_config(ev.decision.scenario)
 
         debug_print("INPUT", {
@@ -127,6 +132,8 @@ class EmailWorkflow(Workflow):
         return ExtractedEvent(
             thread=ev.thread,
             provider=ev.provider,
+            reply_to_message_id=ev.reply_to_message_id,
+            user_id=ev.user_id,
             decision=ev.decision,
             inputs=inputs,
             scenario_cfg=scenario_cfg,
@@ -167,6 +174,8 @@ class EmailWorkflow(Workflow):
         return DraftedEvent(
             thread=ev.thread,
             provider=ev.provider,
+            reply_to_message_id=ev.reply_to_message_id,
+            user_id=ev.user_id,
             decision=ev.decision,
             inputs=ev.inputs,
             scenario_cfg=ev.scenario_cfg,
@@ -222,32 +231,37 @@ class EmailWorkflow(Workflow):
             "subject": final_email.subject,
         })
 
-        # Send reply if provider exists
-        if ev.provider:
+        raw_data: Dict[str, Any] = {}
+
+        # ✅ FIXED — now using passed reply_to_message_id + user_id
+        if ev.provider and ev.reply_to_message_id:
             sent = await _step_reply(
                 ev.provider,
-                latest.id,
+                ev.reply_to_message_id,
                 final_email,
-                user_id=None,
+                user_id=ev.user_id,
                 tracer=tracer,
             )
 
             debug_print("SEND OUTPUT", {
                 "sent_message_id": sent.id,
             })
+
+            raw_data["sent_message_id"] = sent.id
+            raw_data["sent_at"] = sent.receivedDateTime
         else:
-            print("⚠ No provider — skipping send")
+            print("⚠ No provider or reply_to_message_id — skipping send")
 
         print("\n========== WORKFLOW COMPLETE ==========\n")
 
         return StopEvent(
-    result=ProcessingResult(
-        thread_id=ev.thread.thread_id,
-        scenario=ev.decision.scenario,
-        decision_confidence=ev.decision.confidence,
-        draft=ev.draft,
-        review=review,
-        final_email=final_email,
-        raw_data={},
-    )
-)
+            result=ProcessingResult(
+                thread_id=ev.thread.thread_id,
+                scenario=ev.decision.scenario,
+                decision_confidence=ev.decision.confidence,
+                draft=ev.draft,
+                review=review,
+                final_email=final_email,
+                raw_data=raw_data,
+            )
+        )

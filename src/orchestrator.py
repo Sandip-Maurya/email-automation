@@ -311,6 +311,8 @@ async def process_trigger(
             result = await workflow.run(
                 thread=thread,
                 provider=provider,
+                reply_to_message_id=reply_to_message_id,
+                user_id=user_id,
             )
             # result = await process_email_thread(
             #     thread,
@@ -353,8 +355,7 @@ async def process_email_thread(
     that parent. Pydantic AI Agent.instrument_all() uses the global tracer and inherits the current
     context, so LLM/agent spans automatically appear as children of the corresponding manual span.
     """
-    print('thread',thread)
-    print("provider",provider)
+    
     if tracer is None:
         tracer = get_tracer()
     thread_id = thread.thread_id
