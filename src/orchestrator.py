@@ -3,6 +3,7 @@
 import asyncio
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, TypeVar
+from src.llama_index_flow import EmailWorkflow
 
 T = TypeVar("T")
 
@@ -305,14 +306,19 @@ async def process_trigger(
                 root_span.set_attribute("workflow.thread_id", thread.thread_id)
                 root_span.set_attribute("workflow.input_preview", thread_preview_for_observability(thread))
             reply_to_message_id = message_id if message_id else (thread.latest_email.id if thread.latest_email else None)
+            workflow = EmailWorkflow()
 
-            result = await process_email_thread(
-                thread,
+            result = await workflow.run(
+                thread=thread,
                 provider=provider,
-                tracer=tracer,
-                reply_to_message_id=reply_to_message_id,
-                user_id=user_id,
             )
+            # result = await process_email_thread(
+            #     thread,
+            #     provider=provider,
+            #     tracer=tracer,
+            #     reply_to_message_id=reply_to_message_id,
+            #     user_id=user_id,
+            # )
             root_span.set_attribute("workflow.scenario", result.scenario)
             set_span_input_output(
                 root_span,
@@ -347,6 +353,8 @@ async def process_email_thread(
     that parent. Pydantic AI Agent.instrument_all() uses the global tracer and inherits the current
     context, so LLM/agent spans automatically appear as children of the corresponding manual span.
     """
+    print('thread',thread)
+    print("provider",provider)
     if tracer is None:
         tracer = get_tracer()
     thread_id = thread.thread_id

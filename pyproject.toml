@@ -30,6 +30,7 @@ dependencies = [
     # Agent config (YAML)
     "pyyaml>=6.0",
     "openinference-instrumentation>=0.1.44",
+    "llama-index>=0.14.14",
 ]
 
 [project.scripts]
