@@ -14,6 +14,8 @@ Multi-agent email automation system for pharmaceutical trade operations. The sys
 
 ## Architecture
 
+The pipeline is orchestrated by a **LlamaIndex Workflow** (event-driven, step-based). See [docs/WORKFLOW_ARCHITECTURE.md](docs/WORKFLOW_ARCHITECTURE.md) for details.
+
 ```
 Trigger (message_id/conversation_id)
     │
@@ -271,6 +273,7 @@ email-automation/
 
 | Document | Description |
 |----------|-------------|
+| [Workflow Architecture](docs/WORKFLOW_ARCHITECTURE.md) | LlamaIndex Workflow model, events, steps, conditionals |
 | [Draft and Sent Flow](docs/DRAFT_AND_SENT_FLOW.md) | Draft-only flow, Sent subscription, ImmutableId correlation, schema, analytics APIs |
 | [Agents Config](docs/AGENTS_CONFIG.md) | agents.yaml, validate-config CLI, Config API (GET/PUT agents, reload) |
 | [Azure Setup Guide](docs/AZURE_SETUP_GUIDE.md) | Complete Azure AD app registration walkthrough |
@@ -282,6 +285,7 @@ email-automation/
 
 | Component | Technology |
 |-----------|------------|
+| Orchestration | LlamaIndex Workflows |
 | AI Framework | Pydantic AI |
 | LLM | OpenAI GPT-4o-mini |
 | CLI | Typer + Rich |

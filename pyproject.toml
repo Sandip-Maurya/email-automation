@@ -32,6 +32,8 @@ dependencies = [
     "openinference-instrumentation>=0.1.44",
     # Database (Phase 1: SQLite + ORM)
     "sqlalchemy>=2.0",
+    # Orchestration (event-driven workflows)
+    "llama-index-workflows>=0.2",
 ]
 
 [project.scripts]

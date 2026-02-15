@@ -114,6 +114,7 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 |---------|--------|-------------|
 | Trigger Processing | ✅ Complete | Entry point for message/conversation triggers |
 | Thread Fetching | ✅ Complete | Fetch and convert Graph messages to internal models |
+| LlamaIndex Workflows | ✅ Complete | Event-driven, step-based orchestration; see `src/workflow/` and [WORKFLOW_ARCHITECTURE.md](WORKFLOW_ARCHITECTURE.md) |
 | Scenario Branching | ✅ Complete | Config-driven: looks up scenario in `config/agents.yaml` and uses registries for input agent, trigger, and draft agent |
 | OpenTelemetry Spans | ✅ Complete | Full tracing with custom attributes |
 | Error Recording | ✅ Complete | Exception recording in spans |
@@ -162,7 +163,7 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 
 | Feature | Description | Files |
 |---------|-------------|-------|
-| Multi-Agent Pipeline | Full A0→A1-4→A6/A7/A8/A9→Input A11→Decision A10→Email A12; S3 scaffold A_D1–A_D4 | `src/agents/`, `src/orchestrator.py` |
+| Multi-Agent Pipeline | Full A0→A1-4→A6/A7/A8/A9→Input A11→Decision A10→Email A12; S3 scaffold A_D1–A_D4 | `src/agents/`, `src/orchestrator.py`, `src/workflow/`, `src/orchestrator_steps.py` |
 | Configuration Externalization | Prompts, model settings, scenario wiring in `config/agents.yaml`; Config API and `validate-config` CLI | `config/agents.yaml`, `src/agents/registry.py`, `src/webhook/config_routes.py`, `src/cli/validate_config.py` |
 | Scenario Classification | S1 (Supply), S2 (Access), S3 (Allocation), S4 (Catch-All) | `src/agents/decision_agent.py` |
 | Structured Logging | Structlog with console (colored) + JSONL file output | `src/utils/logger.py` |
@@ -284,7 +285,7 @@ The Pharmaceutical Email Agentic Network is a multi-agent system designed to aut
 - Root and step spans set OpenInference span kind (CHAIN, TOOL, AGENT) and OTel SpanKind (SERVER/INTERNAL).
 - Input/output are set via `span_attributes_for_workflow_step` and `set_span_input_output` (`src/utils/observability.py`) so Phoenix shows kind and input/output columns; payloads are PII-safe summaries (ids, scenario, counts).
 - Webhook: root span `webhook.receive` wraps the notifications POST with input (batch_size, subscription_id) and output (enqueued, candidates).
-- Orchestrator pipeline is implemented as step functions (`_step_classify`, `_step_extract`, etc.) for a linear flow with reduced nesting.
+- Orchestrator pipeline is implemented as a LlamaIndex Workflow; step logic lives in `src/orchestrator_steps.py` and is invoked from workflow steps in `src/workflow/email_workflow.py`. Span names remain unchanged.
 
 **Traced Operations**:
 | Span Name | Attributes | Description |
@@ -354,6 +355,7 @@ The `scripts/verify_graph_credentials.py` script provides:
 | `rich` | ≥13.0 | Console formatting and tables |
 | `typer` | ≥0.9 | CLI framework |
 | `structlog` | ≥24.0 | Structured logging |
+| `llama-index-workflows` | ≥0.2 | Event-driven orchestration |
 
 ### Azure & Graph API
 

@@ -79,6 +79,7 @@ email-automation/
 │   ├── component_diagram.jpg
 │   ├── FILTER_CONFIG.md
 │   ├── CORE_WORKFLOW.md
+│   ├── WORKFLOW_ARCHITECTURE.md
 │   ├── DRAFT_AND_SENT_FLOW.md
 │   ├── DEMO_WEBHOOK_GUIDE.md
 │   ├── DEMO_WEBHOOK_MINDMAP.md
@@ -94,6 +95,11 @@ email-automation/
 │   ├── main.py
 │   ├── config.py
 │   ├── orchestrator.py
+│   ├── orchestrator_steps.py
+│   ├── workflow/
+│   │   ├── __init__.py
+│   │   ├── events.py
+│   │   └── email_workflow.py
 │   ├── agents/
 │   │   ├── __init__.py
 │   │   ├── decision_agent.py
@@ -240,11 +246,14 @@ email-automation/
 | **config.py** | Centralized configuration from environment variables. |
 | **Classes / Functions** | |
 | (module-level constants) | PROJECT_ROOT, DATA_DIR, OUTPUT_DIR, INBOX_PATH, SENT_ITEMS_PATH, OPENAI_API_KEY, LOG_DIR, LOG_FILE, LOG_LEVEL, VERBOSE_LOGGING, PHOENIX_*, TARGET_SENDER, WEBHOOK_*, DEDUP_*, etc. |
-| **orchestrator.py** | Orchestrates the full email workflow: fetch thread, A0 → scenario branch → A10 → A11 → send. Scenario branch is **config-driven**: loads scenario from registry, dispatches via get_input_agent(), get_trigger(), get_agent(), get_user_prompt_template(). |
+| **orchestrator.py** | Orchestrates the full email workflow via LlamaIndex Workflow. Fetches thread, then delegates to `EmailOrchestratorWorkflow`. See [WORKFLOW_ARCHITECTURE.md](WORKFLOW_ARCHITECTURE.md). |
+| **orchestrator_steps.py** | Step implementations (classify, extract, trigger, draft, aggregate, review, format, reply) used by the workflow. Each step includes OpenTelemetry tracing. |
+| **workflow/events.py** | Custom event types for the workflow (ClassifiedEvent, ExtractedEvent, etc.). |
+| **workflow/email_workflow.py** | `EmailOrchestratorWorkflow` class with `@step`-decorated methods. Event flow: StartEvent → classify → extract → trigger_or_s3 → draft → aggregate → review → format → send_or_draft → StopEvent. |
 | **Functions** | |
 | `_maybe_await()` | Awaits coroutines or returns sync values (for provider compatibility). |
-| `process_trigger()` | Entry point: fetches thread by message_id/conversation_id, runs pipeline, sends reply. |
-| `process_email_thread()` | Runs decision → (generic) input extraction → trigger → draft → review → format → send with tracing. |
+| `process_trigger()` | Entry point: fetches thread by message_id/conversation_id, runs pipeline via workflow, sends reply. |
+| `process_email_thread()` | Runs the `EmailOrchestratorWorkflow` and returns the ProcessingResult. |
 
 ---
 

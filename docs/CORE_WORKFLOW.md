@@ -67,6 +67,10 @@ When **DRAFT_ONLY** is true (default), the pipeline creates a reply draft and st
 - **Context for review**: Each branch builds `context_for_review = {"inputs": inputs, "trigger_data": trigger_data, "aggregated_context": aggregated_context}` and passes it to Decision A10 (review).
 - **Result**: `ProcessingResult` contains thread_id, scenario, decision_confidence, draft, review, final_email, and raw_data (including sent_message_id/sent_at when a reply was sent).
 
+### Implementation: LlamaIndex Workflow
+
+The pipeline is implemented as an **event-driven LlamaIndex Workflow**. Each stage above maps to a workflow step in `src/workflow/email_workflow.py`. Steps receive and emit typed events; the framework routes events automatically. For details on events, conditionals (S3 scaffold, DRAFT_ONLY), and step flow, see [WORKFLOW_ARCHITECTURE.md](WORKFLOW_ARCHITECTURE.md).
+
 ---
 
 ## Scenario S1: Product Supply
