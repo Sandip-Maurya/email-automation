@@ -6,7 +6,7 @@ import os
 import typer
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
-from src.config import TARGET_SENDER
+from src.config import DRAFT_ONLY, TARGET_SENDER
 from src.db import init_db
 from src.mail_provider.graph_real import GraphProvider
 from src.mail_provider.mapping import graph_messages_to_thread
@@ -88,6 +88,14 @@ def graph(
                 root_span.set_attribute("workflow.input_preview", thread_preview_for_observability(thread))
 
                 bind_context(command="graph", sender=effective_sender, message_id=msg.id)
+                if DRAFT_ONLY:
+                    result = await process_email_thread(
+                        thread, provider=provider, tracer=tracer,
+                        reply_to_message_id=msg.id,
+                    )
+                    root_span.set_attribute("workflow.scenario", result.scenario)
+                    set_span_input_output(root_span, output_summary={"thread_id": result.thread_id, "scenario": result.scenario})
+                    return result, False
                 result = await process_email_thread(thread, provider=None, tracer=tracer)
                 root_span.set_attribute("workflow.scenario", result.scenario)
                 set_span_input_output(root_span, output_summary={"thread_id": result.thread_id, "scenario": result.scenario})
@@ -126,8 +134,12 @@ def graph(
         raise
 
     if not sent:
-        console.print("[dim]Not sending.[/dim]")
-        log.info("graph.send_skipped")
+        if DRAFT_ONLY:
+            console.print("[green]Draft created. Review in your Drafts folder.[/green]")
+            log.info("graph.draft_created", thread_id=result.thread_id)
+        else:
+            console.print("[dim]Not sending.[/dim]")
+            log.info("graph.send_skipped")
         clear_context()
         return
 

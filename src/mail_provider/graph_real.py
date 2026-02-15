@@ -37,6 +37,9 @@ from src.utils.logger import get_logger, log_agent_step
 
 logger = get_logger("email_automation.graph_provider")
 
+# Prefer header for immutable message IDs (draft id = sent id when item moves to Sent)
+PREFER_IMMUTABLE_ID = "IdType=\"ImmutableId\""
+
 # Delegated scopes (same as verify_graph_credentials.py); need Mail.Send for sending
 DELEGATED_SCOPES = [
     "https://graph.microsoft.com/Mail.Read",
@@ -176,10 +179,29 @@ class GraphProvider:
         notification_url: str,
         client_state: str,
         expiration_minutes: int = 4000,
+        resource: str | None = None,
+        use_immutable_id: bool = False,
     ) -> GraphSubscription | None:
-        """Create a webhook subscription for new mail (delegates to webhook.subscription)."""
+        """Create a webhook subscription (delegates to webhook.subscription)."""
         from src.webhook.subscription import create_subscription as _create
         return await _create(
+            self._client,
+            notification_url=notification_url,
+            client_state=client_state,
+            expiration_minutes=expiration_minutes,
+            resource=resource,
+            use_immutable_id=use_immutable_id,
+        )
+
+    async def create_sent_subscription(
+        self,
+        notification_url: str,
+        client_state: str,
+        expiration_minutes: int = 4000,
+    ) -> GraphSubscription | None:
+        """Create a subscription for Sent Items with ImmutableId (for draft->sent correlation)."""
+        from src.webhook.subscription import create_sent_subscription as _create_sent
+        return await _create_sent(
             self._client,
             notification_url=notification_url,
             client_state=client_state,
@@ -208,10 +230,19 @@ class GraphProvider:
         max_throttle_retries = 5
         for attempt in range(max(max_network_retries, max_throttle_retries)):
             try:
+                from msgraph.generated.users.item.messages.item.message_item_request_builder import (
+                    MessageItemRequestBuilder,
+                )
+                get_config = MessageItemRequestBuilder.MessageItemRequestBuilderGetRequestConfiguration()
+                get_config.headers.add("Prefer", PREFER_IMMUTABLE_ID)
                 if user_id:
-                    msg = await self._client.users.by_user_id(user_id).messages.by_message_id(message_id).get()
+                    msg = await self._client.users.by_user_id(user_id).messages.by_message_id(
+                        message_id
+                    ).get(request_configuration=get_config)
                 else:
-                    msg = await self._client.me.messages.by_message_id(message_id).get()
+                    msg = await self._client.me.messages.by_message_id(message_id).get(
+                        request_configuration=get_config
+                    )
                 if msg:
                     logger.debug(
                         "graph_provider.get_message.hit",
@@ -445,6 +476,42 @@ class GraphProvider:
             toRecipients=[Recipient(emailAddress=EmailAddress(address=payload.to))],
             isDraft=False,
         )
+
+    async def create_reply_draft(
+        self,
+        message_id: str,
+        body: str,
+        subject: str | None = None,
+        user_id: str | None = None,
+    ) -> GraphMessage:
+        """Create a reply draft (do not send). Uses ImmutableId so the same id is used when the draft is sent.
+        When user_id is set, uses /users/{id}/messages/.../createReply; else /me/.../createReply.
+        """
+        from msgraph.generated.users.item.messages.item.create_reply.create_reply_post_request_body import (
+            CreateReplyPostRequestBody,
+        )
+        from msgraph.generated.users.item.messages.item.create_reply.create_reply_request_builder import (
+            CreateReplyRequestBuilder,
+        )
+        log_agent_step("GraphProvider", "Create reply draft", {"message_id": message_id})
+        html_body = (body or "").replace("\n", "<br>\n")
+        message = GraphSDKMessage(
+            body=GraphSDKItemBody(content_type=BodyType.Html, content=html_body),
+        )
+        request_body = CreateReplyPostRequestBody(message=message)
+        post_config = CreateReplyRequestBuilder.CreateReplyRequestBuilderPostRequestConfiguration()
+        post_config.headers.add("Prefer", PREFER_IMMUTABLE_ID)
+        if user_id:
+            draft = await self._client.users.by_user_id(user_id).messages.by_message_id(
+                message_id
+            ).create_reply.post(body=request_body, request_configuration=post_config)
+        else:
+            draft = await self._client.me.messages.by_message_id(
+                message_id
+            ).create_reply.post(body=request_body, request_configuration=post_config)
+        if not draft:
+            raise ValueError("create_reply returned no draft message")
+        return _convert_sdk_message(draft)
 
     async def reply_to_message(
         self, message_id: str, comment: str, user_id: str | None = None

@@ -7,9 +7,11 @@ from src.db.models.allocation import (
     SpecBuyReport,
 )
 from src.db.models.inventory import InventorySnapshot
+from src.db.models.email_outcome import EmailOutcome
 from src.db.models.master import Contact, Customer, Distributor, Location, Product
 
 __all__ = [
+    "EmailOutcome",
     "Location",
     "Distributor",
     "Product",

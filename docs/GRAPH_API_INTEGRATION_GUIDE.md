@@ -717,6 +717,14 @@ async def create_reply_draft(
     return draft.id
 ```
 
+### Immutable ID for draft and Sent correlation
+
+To correlate a **draft** with the **sent** message after the user sends it from Outlook, use **immutable identifiers**. The same id is returned for the draft and for the copy in Sent Items. See [Obtain immutable identifiers for Outlook resources](https://learn.microsoft.com/en-us/graph/outlook-immutable-id).
+
+- **When creating the reply draft:** Add the header `Prefer: IdType="ImmutableId"` to the `create_reply.post()` request (e.g. via the request builder’s `PostRequestConfiguration` and `headers.add("Prefer", "IdType=\"ImmutableId\"")`). Store the returned `draft.id`.
+- **When creating a subscription** (e.g. for Sent Items): Add the same `Prefer: IdType="ImmutableId"` header to the subscription creation request so change notifications use immutable ids. Then when a Sent notification arrives, the resource id in the payload matches the draft id you stored.
+- **When getting a message** (e.g. to read the sent content): Use the same header on `GET /me/messages/{id}` so the id format is consistent.
+
 ---
 
 ## Data Models

@@ -67,10 +67,19 @@ DEDUP_STORE_PATH = DATA_DIR / "dedup_state.json"
 WEBHOOK_QUEUE_MAX = int(os.getenv("WEBHOOK_QUEUE_MAX", "200"))
 WEBHOOK_WORKER_COUNT = int(os.getenv("WEBHOOK_WORKER_COUNT", "2"))
 
+# Draft-only mode: when True, create reply draft and persist; do not send. When False, send via reply_to_message.
+DRAFT_ONLY = os.getenv("DRAFT_ONLY", "true").lower() == "true"
+
 # Webhook subscription resource (narrowed to Inbox by default)
 WEBHOOK_SUBSCRIPTION_RESOURCE = os.getenv(
     "WEBHOOK_SUBSCRIPTION_RESOURCE",
     "me/mailFolders('Inbox')/messages",
+)
+
+# Webhook Sent Items subscription resource (for correlating draft -> sent via ImmutableId)
+WEBHOOK_SENT_RESOURCE = os.getenv(
+    "WEBHOOK_SENT_RESOURCE",
+    "me/mailFolders('SentItems')/messages",
 )
 
 # Webhook fetch retry settings (for Graph eventual consistency)

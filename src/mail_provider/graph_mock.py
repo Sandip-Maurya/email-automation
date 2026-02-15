@@ -111,6 +111,30 @@ class GraphMockProvider:
         logger.info("mail_provider.list_conversations", count=len(result))
         return result
 
+    def create_reply_draft(
+        self,
+        message_id: str,
+        body: str,
+        subject: str | None = None,
+        user_id: str | None = None,
+    ) -> GraphMessage:
+        """Mock: return a draft message with deterministic id (draft_{message_id}) for correlation in tests."""
+        log_agent_step("MailProvider", "Create reply draft (mock)", {"message_id": message_id})
+        logger.info("mail_provider.create_reply_draft", message_id=message_id)
+        draft_id = f"draft_{message_id}"
+        sent_dt = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        return GraphMessage(
+            id=draft_id,
+            conversationId=None,
+            receivedDateTime=sent_dt,
+            subject=subject or "",
+            body=ItemBody(contentType="html", content=body or ""),
+            bodyPreview=(body[:255] if body else "") if body else None,
+            from_=None,
+            toRecipients=[],
+            isDraft=True,
+        )
+
     def reply_to_message(
         self, message_id: str, comment: str, user_id: str | None = None
     ) -> GraphMessage:

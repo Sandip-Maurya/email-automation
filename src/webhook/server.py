@@ -20,6 +20,7 @@ from src.config import (
     WEBHOOK_FETCH_BASE_DELAY,
     WEBHOOK_FETCH_MAX_ATTEMPTS,
     WEBHOOK_FAILED_MSG_TTL_SECONDS,
+    WEBHOOK_SUBSCRIPTION_RESOURCE,
 )
 from src.webhook.filter_config import (
     is_valid_email,
@@ -29,11 +30,16 @@ from src.webhook.filter_config import (
 from src.webhook.dedup_store import DedupStore
 from src.webhook.models import ChangeNotificationBatch, ChangeNotification
 from src.orchestrator import process_trigger, _maybe_await
+from src.db.repositories import (
+    email_outcome_get_by_message_id,
+    email_outcome_update_sent,
+)
 from src.models.email import EmailThread, Email
 from src.utils.logger import get_logger
 from src.utils.observability import span_attributes_for_workflow_step, set_span_input_output
 from src.utils.tracing import get_tracer, shutdown_tracing
 from src.webhook.config_routes import router as config_router
+from src.webhook.analytics_routes import router as analytics_router
 from opentelemetry.trace import SpanKind
 
 logger = get_logger("email_automation.webhook.server")
@@ -127,6 +133,9 @@ async def _run_process_trigger(
         if result.raw_data.get("sent_message_id") and dedup is not None and result.thread_id:
             await dedup.mark_replied(result.thread_id)
             logger.debug("webhook.dedup.mark_replied", conversation_id=result.thread_id)
+        elif result.raw_data.get("draft_message_id") and dedup is not None and result.thread_id:
+            await dedup.mark_replied(result.thread_id)
+            logger.debug("webhook.dedup.mark_replied_after_draft", conversation_id=result.thread_id)
     except ValueError as e:
         if "Message not found:" in str(e):
             logger.warning(
@@ -136,19 +145,89 @@ async def _run_process_trigger(
             )
         else:
             logger.exception(
-                "webhook.notifications.process_error",
+                "webhook.background.process_trigger_error",
                 message_id=message_id,
                 error=str(e),
             )
     except Exception as e:
         logger.exception(
-            "webhook.notifications.process_error",
+            "webhook.background.process_trigger_error",
             message_id=message_id,
             error=str(e),
         )
     finally:
         if dedup is not None:
             await dedup.remove_processing(message_id)
+
+
+def _parse_sent_at(received_date_time: str | None) -> datetime | None:
+    """Parse Graph receivedDateTime (ISO 8601) to datetime for sent_at."""
+    if not received_date_time:
+        return None
+    try:
+        s = (received_date_time or "").replace("Z", "+00:00")
+        return datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        return None
+
+
+async def _handle_sent_notification(
+    app: FastAPI,
+    message_id: str,
+    user_id: str | None,
+) -> None:
+    """Handle a Sent Items notification: find outcome by message_id (ImmutableId), update sent fields."""
+    provider = getattr(app.state, "provider", None)
+    if not provider:
+        logger.error("webhook.sent_notification.no_provider", message_id=message_id)
+        return
+    msg = await _maybe_await(provider.get_message(message_id, user_id=user_id))
+    if not msg:
+        logger.warning(
+            "webhook.sent_notification.message_not_found",
+            message_id=message_id,
+            user_id=user_id,
+        )
+        return
+    resolved_id = msg.id
+    outcome = email_outcome_get_by_message_id(resolved_id)
+    if not outcome:
+        logger.debug(
+            "webhook.sent_notification.no_outcome",
+            message_id=message_id,
+            message="Draft not from our pipeline or already superseded",
+        )
+        return
+    sent_subject = msg.subject or ""
+    sent_body = (msg.body.content or "") if msg.body else ""
+    sent_to = ""
+    if msg.toRecipients:
+        r = msg.toRecipients[0]
+        if r and r.emailAddress:
+            sent_to = r.emailAddress.address or ""
+    sent_at_dt = _parse_sent_at(msg.receivedDateTime)
+    if not sent_at_dt:
+        sent_at_dt = datetime.now(timezone.utc)
+    updated = email_outcome_update_sent(
+        resolved_id,
+        sent_subject=sent_subject,
+        sent_body=sent_body,
+        sent_to=sent_to,
+        sent_at=sent_at_dt,
+    )
+    if updated:
+        logger.info(
+            "webhook.sent_notification.updated",
+            message_id=resolved_id,
+            conversation_id=outcome.conversation_id,
+        )
+        dedup: DedupStore | None = getattr(app.state, "dedup_store", None)
+        if dedup is not None and outcome.conversation_id:
+            await dedup.mark_replied(outcome.conversation_id)
+            logger.debug(
+                "webhook.dedup.mark_replied",
+                conversation_id=outcome.conversation_id,
+            )
 
 
 async def _process_notification_message(
@@ -246,14 +325,18 @@ async def _process_notification_message(
 
 
 async def _notification_worker(app: FastAPI, worker_id: int) -> None:
-    """Worker loop: get (message_id, user_id) from queue, process one message. Stops on CancelledError."""
-    queue: asyncio.Queue[tuple[str, str | None]] = app.state.notification_queue
+    """Worker loop: get (message_id, user_id, subscription_id) from queue; dispatch Sent vs Inbox. Stops on CancelledError."""
+    queue: asyncio.Queue[tuple[str, str | None, str | None]] = app.state.notification_queue
     logger.info("webhook.worker.started", worker_id=worker_id)
     try:
         while True:
-            message_id, user_id = await queue.get()
+            message_id, user_id, subscription_id = await queue.get()
             try:
-                await _process_notification_message(app, message_id, user_id)
+                sent_sub_id = getattr(app.state, "sent_subscription_id", None)
+                if sent_sub_id and subscription_id == sent_sub_id:
+                    await _handle_sent_notification(app, message_id, user_id)
+                else:
+                    await _process_notification_message(app, message_id, user_id)
             finally:
                 queue.task_done()
     except asyncio.CancelledError:
@@ -301,6 +384,8 @@ def _setup_provider(
     )
     app.state.provider = provider
     app.state._graph_http_client = graph_http_client
+    app.state.inbox_subscription_id = None
+    app.state.sent_subscription_id = None
     if not subscription_config:
         return
     notification_url = subscription_config.get("notification_url", "")
@@ -312,15 +397,34 @@ def _setup_provider(
     async def _deferred_create_subscription() -> None:
         await asyncio.sleep(3)
         try:
-            sub = await provider.create_subscription(
+            inbox_sub = await provider.create_subscription(
+                notification_url=notification_url,
+                client_state=client_state,
+                expiration_minutes=expiration_minutes,
+                resource=WEBHOOK_SUBSCRIPTION_RESOURCE,
+                use_immutable_id=True,
+            )
+            if inbox_sub and inbox_sub.id:
+                app.state.inbox_subscription_id = inbox_sub.id
+                logger.info(
+                    "webhook.lifespan.inbox_subscription_created",
+                    subscription_id=inbox_sub.id,
+                )
+            else:
+                logger.warning("webhook.lifespan.inbox_subscription_failed")
+            sent_sub = await provider.create_sent_subscription(
                 notification_url=notification_url,
                 client_state=client_state,
                 expiration_minutes=expiration_minutes,
             )
-            if sub and sub.id:
-                logger.info("webhook.lifespan.subscription_created", subscription_id=sub.id)
+            if sent_sub and sent_sub.id:
+                app.state.sent_subscription_id = sent_sub.id
+                logger.info(
+                    "webhook.lifespan.sent_subscription_created",
+                    subscription_id=sent_sub.id,
+                )
             else:
-                logger.warning("webhook.lifespan.subscription_failed")
+                logger.warning("webhook.lifespan.sent_subscription_failed")
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -433,6 +537,7 @@ def create_app(
         app.state.allowed_senders = load_allowed_senders()
 
     app.include_router(config_router)
+    app.include_router(analytics_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -550,8 +655,9 @@ def create_app(
             dedup: DedupStore | None = getattr(app.state, "dedup_store", None)
             client_state = (WEBHOOK_CLIENT_STATE or "").strip()
 
-            # Fast path: parse resource (and fallback resourceData.id) per Graph docs; collect (message_id, user_id).
-            candidates: list[tuple[str, str | None]] = []
+            # Parse resource per Graph docs; collect (message_id, user_id, subscription_id). Sent sub skips Inbox dedup.
+            candidates: list[tuple[str, str | None, str | None]] = []
+            sent_sub_id = getattr(app.state, "sent_subscription_id", None)
             for notification in batch.value:
                 if client_state and notification.client_state != client_state:
                     logger.warning(
@@ -574,16 +680,18 @@ def create_app(
                         resource=notification.resource,
                     )
                     continue
-                if dedup is not None and await dedup.is_processing(message_id):
-                    logger.debug("webhook.notifications.dedup_in_flight", message_id=message_id)
-                    continue
-                if dedup is not None and await dedup.has_failed(message_id):
-                    logger.debug("webhook.notifications.skip_already_failed", message_id=message_id)
-                    continue
-                if dedup is not None and await dedup.has_triggered(message_id):
-                    logger.debug("webhook.notifications.skip_already_triggered", message_id=message_id)
-                    continue
-                candidates.append((message_id, user_id))
+                is_sent_sub = bool(sent_sub_id and notification.subscription_id == sent_sub_id)
+                if not is_sent_sub:
+                    if dedup is not None and await dedup.is_processing(message_id):
+                        logger.debug("webhook.notifications.dedup_in_flight", message_id=message_id)
+                        continue
+                    if dedup is not None and await dedup.has_failed(message_id):
+                        logger.debug("webhook.notifications.skip_already_failed", message_id=message_id)
+                        continue
+                    if dedup is not None and await dedup.has_triggered(message_id):
+                        logger.debug("webhook.notifications.skip_already_triggered", message_id=message_id)
+                        continue
+                candidates.append((message_id, user_id, notification.subscription_id))
 
             # Enqueue candidates for worker pool; backpressure if queue full
             queue = getattr(app.state, "notification_queue", None)

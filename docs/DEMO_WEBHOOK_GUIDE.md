@@ -39,7 +39,7 @@ Open for audience questions. Use the Q&A section below as prep.
 
 ## 2. Overview (for reference)
 
-In webhook mode the app runs as a **listening service**. When new mail arrives, Graph sends a change notification to our endpoint. We fetch the message via Graph, filter by allowed sender, then run the pipeline: **classify** (A0) into one of four scenarios, **extract** entities (input agents), call the scenario **trigger** (inventory, access, allocation, or RAG), **draft** (A6–A9), **aggregate** (A11), **review** (A10), **format** (A12), and **send** the reply via Graph. Observability: structured logs and OpenTelemetry traces in Phoenix. Diagram: [CORE_WORKFLOW.md](CORE_WORKFLOW.md).
+In webhook mode the app runs as a **listening service**. When new mail arrives, Graph sends a change notification to our endpoint. We fetch the message via Graph, filter by allowed sender, then run the pipeline: **classify** (A0) into one of four scenarios, **extract** entities (input agents), call the scenario **trigger** (inventory, access, allocation, or RAG), **draft** (A6–A9), **aggregate** (A11), **review** (A10), **format** (A12). By default (**DRAFT_ONLY**), the app **creates a reply draft** and persists it in the database; a human reviews and sends from Outlook. A second subscription on **Sent Items** (with ImmutableId) notifies the app when the draft was sent, and the same row is updated with the sent content. Analytics APIs: `GET /webhook/analytics/counts`, `draft-vs-sent`, `by-scenario`, `by-user`. See [DRAFT_AND_SENT_FLOW.md](DRAFT_AND_SENT_FLOW.md). Observability: structured logs and OpenTelemetry traces in Phoenix. Diagram: [CORE_WORKFLOW.md](CORE_WORKFLOW.md).
 
 ---
 
@@ -94,7 +94,7 @@ Run in this order so the webhook can create the subscription and receive notific
 
 **Mailbox:** Show the incoming reply and tie it to the scenario and pipeline (draft + review + send).
 
-**Phoenix:** Open http://localhost:6006, find the trace (by time or thread_id). Walk: `webhook.receive` or `process_trigger` → `A0_classify` → `input_extract` → `trigger_fetch` → `draft` → `A11_aggregate` → `A10_review` → `A11_format` → `reply_to_message`. Call out: **input/output and system prompt** per agent, **latency and token usage**, and the **full flow** from retrieving the mail thread to sending the reply.
+**Phoenix:** Open http://localhost:6006, find the trace (by time or thread_id). Walk: `webhook.receive` or `process_trigger` → `A0_classify` → `input_extract` → `trigger_fetch` → `draft` → `A11_aggregate` → `A10_review` → `A11_format` → (when DRAFT_ONLY) draft creation and persist, or `reply_to_message`. Call out: **input/output and system prompt** per agent, **latency and token usage**, and the **full flow** from retrieving the mail thread to draft or send.
 
 **Audience send:** Before they send, add their email to allowed senders (e.g. `POST /webhook/allowed-senders` with `{"email": "their@example.com"}` or add to `config/filter.json` and reload).
 

@@ -16,6 +16,16 @@ class MailProvider(Protocol):
         """Get all messages in a conversation, ordered by receivedDateTime. user_id scopes mailbox when set."""
         ...
 
+    def create_reply_draft(
+        self,
+        message_id: str,
+        body: str,
+        subject: str | None = None,
+        user_id: str | None = None,
+    ) -> GraphMessage:
+        """Create a reply draft (do not send). Returns the draft message with immutable id when using Graph."""
+        ...
+
     def reply_to_message(
         self, message_id: str, comment: str, user_id: str | None = None
     ) -> GraphMessage:

@@ -1,6 +1,7 @@
 """Orchestrate the full email processing workflow: A0 -> branch -> A10 -> A11 -> Send."""
 
 import asyncio
+import json
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -45,6 +46,12 @@ from src.agents.input_agents import (  # noqa: F401 - register input agents
 )
 from src.agents.review_agent import review_draft
 from src.agents.email_agent import format_final_email
+from src.config import DRAFT_ONLY
+from src.db.repositories import (
+    email_outcome_has_recent_draft,
+    email_outcome_insert_draft,
+    email_outcome_supersede_by_conversation,
+)
 from src.agents.s3_scaffold import (
     step_s3_ad1,
     step_s3_ad2,
@@ -55,6 +62,9 @@ from src.triggers import get_trigger  # imports trigger modules so @register_tri
 from src.utils.logger import get_logger, log_agent_step
 
 logger = get_logger("email_automation.orchestrator")
+
+# Serialize draft creation so concurrent runs for the same conversation don't each create a draft.
+_draft_creation_lock = asyncio.Lock()
 
 
 async def _step_classify(thread: EmailThread, tracer: Any) -> Any:
@@ -397,11 +407,52 @@ async def process_email_thread(
     }
 
     if provider is not None and reply_to_message_id:
-        log.debug("process_email_thread.reply_attempt", reply_to_message_id=reply_to_message_id)
-        sent_msg = await _step_reply(provider, reply_to_message_id, final_email, user_id, tracer)
-        raw_data["sent_message_id"] = sent_msg.id
-        raw_data["sent_at"] = sent_msg.receivedDateTime
-        log.info("process_email_thread.reply_complete", sent_message_id=sent_msg.id)
+        if DRAFT_ONLY:
+            log.debug("process_email_thread.draft_only", reply_to_message_id=reply_to_message_id)
+            async with _draft_creation_lock:
+                if await asyncio.to_thread(email_outcome_has_recent_draft, thread_id):
+                    log.info(
+                        "process_email_thread.skip_draft_recent_exists",
+                        thread_id=thread_id,
+                        message="Another run already created a draft for this conversation",
+                    )
+                else:
+                    await asyncio.to_thread(
+                        email_outcome_supersede_by_conversation,
+                        thread_id,
+                        user_id,
+                    )
+                    draft_msg = await _maybe_await(
+                        provider.create_reply_draft(
+                            reply_to_message_id,
+                            final_email.body or "",
+                            subject=final_email.subject,
+                            user_id=user_id,
+                        )
+                    )
+                    metadata_json = json.dumps(draft.metadata) if getattr(draft, "metadata", None) else None
+                    await asyncio.to_thread(
+                        email_outcome_insert_draft,
+                        message_id=draft_msg.id,
+                        conversation_id=thread_id,
+                        reply_to_message_id=reply_to_message_id,
+                        scenario=scenario,
+                        draft_subject=draft.subject,
+                        draft_body=draft.body or "",
+                        final_subject=final_email.subject,
+                        final_body=final_email.body or "",
+                        metadata_json=metadata_json,
+                        user_id=user_id,
+                        user_name=original_sender_name or None,
+                    )
+                    raw_data["draft_message_id"] = draft_msg.id
+                    log.info("process_email_thread.draft_created", draft_message_id=draft_msg.id)
+        else:
+            log.debug("process_email_thread.reply_attempt", reply_to_message_id=reply_to_message_id)
+            sent_msg = await _step_reply(provider, reply_to_message_id, final_email, user_id, tracer)
+            raw_data["sent_message_id"] = sent_msg.id
+            raw_data["sent_at"] = sent_msg.receivedDateTime
+            log.info("process_email_thread.reply_complete", sent_message_id=sent_msg.id)
     log.info(
         "process_email_thread.complete",
         review_status=review.status,

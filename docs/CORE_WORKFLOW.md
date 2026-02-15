@@ -54,10 +54,12 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
            |
            v
   +------------------+
-  |  Send reply      |   provider.reply_to_message(...) if provider set
-  |  (optional)      |   raw_data gets sent_message_id, sent_at
+  |  Send or draft   |   If DRAFT_ONLY: create_reply_draft, persist in email_outcomes; no send.
+  |  (optional)      |   If not DRAFT_ONLY: provider.reply_to_message(...); raw_data gets sent_message_id, sent_at.
   +------------------+
 ```
+
+When **DRAFT_ONLY** is true (default), the pipeline creates a reply draft and stores it in the database; the human reviews and sends from Outlook. When the human sends, a Sent Items subscription notifies the app, which updates the same row with the sent content. See [DRAFT_AND_SENT_FLOW.md](DRAFT_AND_SENT_FLOW.md).
 
 **Shared behavior**
 
@@ -277,9 +279,9 @@ Every email thread is processed by the same pipeline: **fetch thread → classif
            |
            v
   +------------+
-  | Send       |  provider.reply_to_message(reply_to_message_id, final_email.body, user_id)
+  | Send/draft |  If DRAFT_ONLY: create_reply_draft + persist; else reply_to_message(...)
   | (optional) |  Only if provider and reply_to_message_id are set
   +------------+
 ```
 
-The final `ProcessingResult` is built with thread_id, scenario, decision_confidence, draft, review, final_email, and raw_data (including sent_message_id and sent_at when a reply was sent).
+The final `ProcessingResult` is built with thread_id, scenario, decision_confidence, draft, review, final_email, and raw_data (including sent_message_id/sent_at when a reply was sent, or draft_message_id when DRAFT_ONLY).

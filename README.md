@@ -1,6 +1,6 @@
 # Pharmaceutical Email Agentic Network
 
-Multi-agent email automation system for pharmaceutical trade operations. The system processes incoming emails, classifies them into scenarios, extracts relevant data, drafts professional responses, and sends replies via Microsoft Graph API.
+Multi-agent email automation system for pharmaceutical trade operations. The system processes incoming emails, classifies them into scenarios, extracts relevant data, drafts professional responses, and creates reply drafts in the user's Drafts folder (or sends immediately when configured). A human reviews and may edit the draft before sending; when they send, the system records both the agent draft and the sent version in the database and exposes analytics APIs.
 
 ## Features
 
@@ -32,8 +32,10 @@ Review Agent (A10) ─── Quality check, approval/flag
 Email Agent (A11) ─── Final formatting
     │
     ▼
-Mail Provider ─── Reply via Graph API (mock or real)
+Mail Provider ─── Create reply draft (or send if DRAFT_ONLY=false) via Graph API (mock or real)
 ```
+
+When **DRAFT_ONLY** is true (default), the pipeline creates a reply draft and persists it in SQLite; the human reviews and sends from Outlook. A second Graph subscription on Sent Items correlates sent messages to drafts via Immutable ID and updates the stored outcome. See [docs/DRAFT_AND_SENT_FLOW.md](docs/DRAFT_AND_SENT_FLOW.md).
 
 ## Quick Start
 
@@ -104,11 +106,20 @@ The app can run as a **listening service** that receives Microsoft Graph change 
 
 **Agent config API**: When the webhook server is running, you can read and update agent prompts and model settings via `GET/PUT /config/agents`, `POST /config/agents/reload`, and `GET /config/scenarios`. See **[docs/AGENTS_CONFIG.md](docs/AGENTS_CONFIG.md)**.
 
+**Analytics API**: When the webhook server is running (and draft-only flow is used), analytics over email outcomes are available at `GET /webhook/analytics/counts`, `GET /webhook/analytics/draft-vs-sent`, `GET /webhook/analytics/by-scenario`, and `GET /webhook/analytics/by-user`. See **[docs/DRAFT_AND_SENT_FLOW.md](docs/DRAFT_AND_SENT_FLOW.md)**.
+
+**Draft-only and Sent correlation** (see [docs/DRAFT_AND_SENT_FLOW.md](docs/DRAFT_AND_SENT_FLOW.md)):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DRAFT_ONLY` | `true` | When true, create reply draft and persist; do not send. When false, send via Graph reply API. |
+| `WEBHOOK_SENT_RESOURCE` | `me/mailFolders('SentItems')/messages` | Graph resource for Sent subscription (ImmutableId used for draft→sent correlation). |
+
 **Webhook-related env vars** (optional overrides):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WEBHOOK_SUBSCRIPTION_RESOURCE` | `me/mailFolders('Inbox')/messages` | Graph resource path for the subscription |
+| `WEBHOOK_SUBSCRIPTION_RESOURCE` | `me/mailFolders('Inbox')/messages` | Graph resource path for the Inbox subscription |
 | `WEBHOOK_FETCH_MAX_ATTEMPTS` | `5` | Retries when fetching a message (Graph eventual consistency) |
 | `WEBHOOK_FETCH_BASE_DELAY` | `2.0` | Base delay in seconds for exponential backoff between fetch retries |
 | `WEBHOOK_FAILED_MSG_TTL_SECONDS` | `600` | How long to remember failed message IDs (avoid re-enqueueing) |
@@ -260,6 +271,7 @@ email-automation/
 
 | Document | Description |
 |----------|-------------|
+| [Draft and Sent Flow](docs/DRAFT_AND_SENT_FLOW.md) | Draft-only flow, Sent subscription, ImmutableId correlation, schema, analytics APIs |
 | [Agents Config](docs/AGENTS_CONFIG.md) | agents.yaml, validate-config CLI, Config API (GET/PUT agents, reload) |
 | [Azure Setup Guide](docs/AZURE_SETUP_GUIDE.md) | Complete Azure AD app registration walkthrough |
 | [Graph API Integration Guide](docs/GRAPH_API_INTEGRATION_GUIDE.md) | Python implementation guide for Graph email operations |

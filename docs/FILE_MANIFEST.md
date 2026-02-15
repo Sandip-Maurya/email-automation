@@ -79,6 +79,7 @@ email-automation/
 │   ├── component_diagram.jpg
 │   ├── FILTER_CONFIG.md
 │   ├── CORE_WORKFLOW.md
+│   ├── DRAFT_AND_SENT_FLOW.md
 │   ├── DEMO_WEBHOOK_GUIDE.md
 │   ├── DEMO_WEBHOOK_MINDMAP.md
 │   ├── DEMO_SAMPLE_EMAILS.md
@@ -141,8 +142,26 @@ email-automation/
 │   │   ├── logger.py
 │   │   ├── observability.py
 │   │   └── tracing.py
+│   ├── db/
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── models/
+│   │   │   ├── __init__.py
+│   │   │   ├── allocation.py
+│   │   │   ├── email_outcome.py
+│   │   │   ├── inventory.py
+│   │   │   └── master.py
+│   │   ├── repositories/
+│   │   │   ├── __init__.py
+│   │   │   ├── allocation_repo.py
+│   │   │   ├── customer_repo.py
+│   │   │   ├── email_outcome_repo.py
+│   │   │   ├── inventory_repo.py
+│   │   │   └── ...
+│   │   └── seed_data.py
 │   └── webhook/
 │       ├── __init__.py
+│       ├── analytics_routes.py
 │       ├── config_routes.py
 │       ├── dedup_store.py
 │       ├── filter_config.py
@@ -190,6 +209,7 @@ email-automation/
 | **AGENTS_CONFIG.md** | Agent config (agents.yaml), validate-config CLI, and Config API (GET/PUT agents, reload, scenarios). |
 | **FILE_MANIFEST.md** | This file: manifest of all files, modules, classes, and functions. |
 | **CORE_WORKFLOW.md** | Core workflow: high-level pipeline and per-scenario (S1–S4) flow with ASCII diagrams. |
+| **DRAFT_AND_SENT_FLOW.md** | Draft-only flow, Sent Items subscription, ImmutableId correlation, email_outcomes schema, analytics APIs. |
 | **DEMO_WEBHOOK_GUIDE.md** | Detailed 15–20 min webhook demo guide: narrative script, expectations, live run (4 mails, 2+ routes, audience send), Phoenix, Graph/app registration, Q&A. |
 | **DEMO_WEBHOOK_MINDMAP.md** | One-page printable mind map for webhook demo: start order, flow, what to show, sample scenarios. |
 | **DEMO_SAMPLE_EMAILS.md** | 2–3 sample emails per scenario (S1–S4) in markdown (Subject + Body) for demo or to share with audience. |

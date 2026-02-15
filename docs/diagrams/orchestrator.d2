@@ -1,0 +1,67 @@
+# Orchestrator pipeline – email automation
+# Render: d2 docs/diagrams/orchestrator.d2 docs/diagrams/orchestrator.svg
+
+direction: down
+
+orchestrator_title: "Trade Copilot" {
+  shape: text
+}
+
+process_trigger: Trigger & Fetch Thread {
+  style: {fill: "#e3f2fd"}
+}
+
+# Classification (A0) – elaborate
+classification: A0 Classify {
+  style: {fill: "#fff3e0"}
+
+  a0: classify_thread(thread)
+  s1: S1 Product Supply
+  s2: S2 Product Access
+  s3: S3 Product Allocation
+  s4: S4 Catch-All
+}
+classification.a0 -> classification.s1
+classification.a0 -> classification.s2
+classification.a0 -> classification.s3
+classification.a0 -> classification.s4
+
+# Scenario branch – Extract → Trigger → Draft (elaborate)
+scenario_branch: Scenario branch {
+  style: {fill: "#f3e5f5"}
+
+  # S1
+  s1_extract: A1 Extract (Supply)
+  s1_trigger: Inventory API
+  s1_draft: A6 Draft
+
+  # S2
+  s2_extract: A2 Extract (Access)
+  s2_trigger: Access API
+  s2_draft: A7 Draft
+
+  # S3
+  s3_extract: A3 Extract (Allocation)
+  s3_trigger: Allocation API
+  s3_draft: A8 Draft
+
+  # S4
+  s4_extract: A4 Extract (Catch-All)
+  s4_trigger: RAG search
+  s4_draft: A9 Draft
+}
+scenario_branch.s1_extract -> scenario_branch.s1_trigger -> scenario_branch.s1_draft
+scenario_branch.s2_extract -> scenario_branch.s2_trigger -> scenario_branch.s2_draft
+scenario_branch.s3_extract -> scenario_branch.s3_trigger -> scenario_branch.s3_draft
+scenario_branch.s4_extract -> scenario_branch.s4_trigger -> scenario_branch.s4_draft
+
+# Combined: Aggregate → Review → Format → Send
+post_draft: "Review + Format and Draft" {
+  style: {fill: "#e8f5e9"}
+}
+
+# Main flow
+orchestrator_title -> process_trigger
+process_trigger -> classification
+classification -> scenario_branch
+scenario_branch -> post_draft

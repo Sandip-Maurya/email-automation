@@ -18,6 +18,7 @@ from src.db.models import (  # noqa: F401
     Customer,
     DataDictionary,
     Distributor,
+    EmailOutcome,
     InventorySnapshot,
     Location,
     Product,
@@ -47,9 +48,9 @@ def init_db() -> None:
         if _SessionLocal is not None:
             return
         _engine = _get_engine()
+        Base.metadata.create_all(bind=_engine)
         insp = inspect(_engine)
         if not insp.has_table("locations"):
-            Base.metadata.create_all(bind=_engine)
             from src.db.seed_data import seed_mock_data
             with _engine.connect() as conn:
                 session = Session(bind=conn)

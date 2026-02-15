@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from msgraph.generated.models.subscription import Subscription as GraphSubscription
 
-from src.config import WEBHOOK_SUBSCRIPTION_RESOURCE
+from src.config import WEBHOOK_SENT_RESOURCE, WEBHOOK_SUBSCRIPTION_RESOURCE
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ logger = get_logger("email_automation.webhook.subscription")
 # Mail messages: max 4230 minutes (~3 days)
 MAIL_SUBSCRIPTION_MAX_MINUTES = 4230
 CHANGE_TYPE_CREATED = "created"
+PREFER_IMMUTABLE_ID = "IdType=\"ImmutableId\""
 
 
 async def create_subscription(
@@ -23,22 +24,37 @@ async def create_subscription(
     notification_url: str,
     client_state: str,
     expiration_minutes: int = 4000,
+    resource: str | None = None,
+    use_immutable_id: bool = False,
 ) -> GraphSubscription | None:
     """
-    Create a Graph subscription for new mail messages (resource from config, changeType=created).
-    Default resource is me/mailFolders('Inbox')/messages. Returns the created subscription or None on failure.
+    Create a Graph subscription (resource from config by default, changeType=created).
+    When use_immutable_id is True, adds Prefer: IdType="ImmutableId" so notifications use immutable ids.
+    Returns the created subscription or None on failure.
     """
     expiration_minutes = min(expiration_minutes, MAIL_SUBSCRIPTION_MAX_MINUTES)
     expiration = datetime.now(timezone.utc) + timedelta(minutes=expiration_minutes)
+    resource_val = resource or WEBHOOK_SUBSCRIPTION_RESOURCE
     body = GraphSubscription(
         change_type=CHANGE_TYPE_CREATED,
         notification_url=notification_url,
-        resource=WEBHOOK_SUBSCRIPTION_RESOURCE,
+        resource=resource_val,
         expiration_date_time=expiration,
         client_state=client_state[:128] if client_state else None,
     )
     try:
-        sub = await client.subscriptions.post(body)
+        from msgraph.generated.subscriptions.subscriptions_request_builder import (
+            SubscriptionsRequestBuilder,
+        )
+        request_config = None
+        if use_immutable_id:
+            request_config = (
+                SubscriptionsRequestBuilder.SubscriptionsRequestBuilderPostRequestConfiguration()
+            )
+            request_config.headers.add("Prefer", PREFER_IMMUTABLE_ID)
+        sub = await client.subscriptions.post(
+            body, request_configuration=request_config
+        )
         if sub and sub.id:
             logger.info(
                 "webhook.subscription.created",
@@ -53,6 +69,23 @@ async def create_subscription(
             error=str(e),
         )
         return None
+
+
+async def create_sent_subscription(
+    client: "GraphServiceClient",
+    notification_url: str,
+    client_state: str,
+    expiration_minutes: int = 4000,
+) -> GraphSubscription | None:
+    """Create a subscription for Sent Items with ImmutableId (for draft->sent correlation)."""
+    return await create_subscription(
+        client,
+        notification_url=notification_url,
+        client_state=client_state,
+        expiration_minutes=expiration_minutes,
+        resource=WEBHOOK_SENT_RESOURCE,
+        use_immutable_id=True,
+    )
 
 
 async def renew_subscription(
