@@ -28,10 +28,7 @@ class TestAnalyticsRoutes(unittest.TestCase):
         insert_draft(
             message_id="m1",
             conversation_id="c1",
-            reply_to_message_id="r1",
             scenario="S1",
-            draft_subject="Subj1",
-            draft_body="Body1",
             final_subject="Subj1",
             final_body="Body1",
             user_id="u1",
@@ -40,20 +37,14 @@ class TestAnalyticsRoutes(unittest.TestCase):
         insert_draft(
             message_id="m2",
             conversation_id="c2",
-            reply_to_message_id="r2",
             scenario="S2",
-            draft_subject="Subj2",
-            draft_body="Body2",
             final_subject="Subj2",
             final_body="Body2",
         )
         insert_draft(
             message_id="m3",
             conversation_id="c3",
-            reply_to_message_id="r3",
             scenario="S1",
-            draft_subject="Subj3",
-            draft_body="Body3",
             final_subject="Subj3",
             final_body="Body3",
         )

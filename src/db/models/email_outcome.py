@@ -19,11 +19,8 @@ class EmailOutcome(Base, TimestampMixin):
     conversation_id: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     user_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
     user_name: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
-    reply_to_message_id: Mapped[str] = mapped_column(String(512), nullable=False)
     scenario: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
 
-    draft_subject: Mapped[str] = mapped_column(String(1024), nullable=False)
-    draft_body: Mapped[str] = mapped_column(Text, nullable=False)
     final_subject: Mapped[str] = mapped_column(String(1024), nullable=False)
     final_body: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

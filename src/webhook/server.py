@@ -35,6 +35,7 @@ from src.db.repositories import (
     email_outcome_update_sent,
 )
 from src.models.email import EmailThread, Email
+from src.utils.body_sanitizer import sanitize_email_body
 from src.utils.logger import get_logger
 from src.utils.observability import span_attributes_for_workflow_step, set_span_input_output
 from src.utils.tracing import get_tracer, shutdown_tracing
@@ -199,7 +200,9 @@ async def _handle_sent_notification(
         )
         return
     sent_subject = msg.subject or ""
-    sent_body = (msg.body.content or "") if msg.body else ""
+    raw_sent_body = (msg.body.content or "") if msg.body else ""
+    content_type = (msg.body.contentType or "html") if msg.body else "html"
+    sent_body = sanitize_email_body(raw_sent_body, content_type=content_type)
     sent_to = ""
     if msg.toRecipients:
         r = msg.toRecipients[0]

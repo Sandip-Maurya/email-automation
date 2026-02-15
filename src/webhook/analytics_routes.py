@@ -83,14 +83,14 @@ async def analytics_draft_vs_sent(
             rows = list(session.scalars(q).all())
             items = []
             for r in rows:
-                subject_changed = (r.draft_subject or "") != (r.sent_subject or "")
-                body_changed = (r.draft_body or "") != (r.sent_body or "")
+                subject_changed = (r.final_subject or "") != (r.sent_subject or "")
+                body_changed = (r.final_body or "") != (r.sent_body or "")
                 items.append({
                     "message_id": r.message_id,
                     "conversation_id": r.conversation_id,
                     "scenario": r.scenario,
-                    "draft_subject": r.draft_subject,
-                    "draft_body": r.draft_body,
+                    "final_subject": r.final_subject,
+                    "final_body": r.final_body,
                     "sent_subject": r.sent_subject,
                     "sent_body": r.sent_body,
                     "sent_to": r.sent_to,

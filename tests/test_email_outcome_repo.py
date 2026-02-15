@@ -27,10 +27,7 @@ class TestEmailOutcomeRepo(unittest.TestCase):
         row = insert_draft(
             message_id="msg-1",
             conversation_id="conv-1",
-            reply_to_message_id="reply-to-1",
             scenario="S1",
-            draft_subject="Re: Test",
-            draft_body="Draft body",
             final_subject="Re: Test",
             final_body="Final body",
             user_id="user-1",
@@ -45,17 +42,14 @@ class TestEmailOutcomeRepo(unittest.TestCase):
         found = get_by_message_id("msg-1")
         self.assertIsNotNone(found)
         self.assertEqual(found.message_id, "msg-1")
-        self.assertEqual(found.draft_subject, "Re: Test")
+        self.assertEqual(found.final_subject, "Re: Test")
         self.assertIsNone(get_by_message_id("nonexistent"))
 
     def test_supersede_by_conversation(self):
         insert_draft(
             message_id="msg-a",
             conversation_id="conv-x",
-            reply_to_message_id="r1",
             scenario="S1",
-            draft_subject="Subj",
-            draft_body="Body",
             final_subject="Subj",
             final_body="Body",
         )
@@ -69,10 +63,7 @@ class TestEmailOutcomeRepo(unittest.TestCase):
         insert_draft(
             message_id="msg-sent",
             conversation_id="conv-sent",
-            reply_to_message_id="r1",
             scenario="S2",
-            draft_subject="Draft",
-            draft_body="Draft body",
             final_subject="Draft",
             final_body="Draft body",
         )
